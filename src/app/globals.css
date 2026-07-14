@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+/* This app is designed for a single, consistent light theme for now, so we
+   intentionally don't follow the OS-level prefers-color-scheme: dark here —
+   letting text/background colors flip automatically caused invisible
+   near-white text on white form fields. A proper dark mode is a good
+   candidate for a future iteration, designed deliberately rather than
+   inherited automatically. */
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+input,
+select,
+textarea {
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
+}
