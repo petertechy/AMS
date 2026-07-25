@@ -11,12 +11,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const showRequests = await isFeatureEnabled("reassignment_requests");
+  const showMaintenance = await isFeatureEnabled("maintenance_tracking");
+  const showCheckout = await isFeatureEnabled("self_service_checkout");
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <input type="checkbox" id="sidebar-toggle" className="peer hidden" />
 
-      <Sidebar session={session!} showRequests={showRequests} />
+      <Sidebar
+        session={session!}
+        showRequests={showRequests}
+        showMaintenance={showMaintenance}
+        showCheckout={showCheckout}
+      />
 
       <label
         htmlFor="sidebar-toggle"

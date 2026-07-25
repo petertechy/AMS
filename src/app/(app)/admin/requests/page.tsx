@@ -2,6 +2,8 @@ import Link from "next/link";
 import { listReassignmentRequests } from "@/lib/models";
 import { resolveReassignmentRequestAction } from "@/app/actions/allocations";
 import Badge from "@/components/Badge";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 
 function formatDate(ts: number | null) {
   if (!ts) return "-";
@@ -28,11 +30,7 @@ export default async function AdminRequestsPage({
       <h1 className="text-xl font-semibold text-slate-900 mb-1">Reassignment Requests</h1>
       <p className="text-sm text-slate-500 mb-6">Review and resolve staff requests to reassign assets.</p>
 
-      {query.resolved && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-          Request resolved.
-        </div>
-      )}
+      {query.resolved && <Toast type="success" message="Request resolved." />}
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden mb-6">
         <h2 className="text-sm font-semibold text-slate-900 px-5 py-3 border-b border-slate-200">
@@ -64,22 +62,22 @@ export default async function AdminRequestsPage({
                     <form action={resolveReassignmentRequestAction}>
                       <input type="hidden" name="requestId" value={r.id} />
                       <input type="hidden" name="decision" value="APPROVED" />
-                      <button
-                        type="submit"
+                      <SubmitButton
+                        pendingLabel="…"
                         className="text-emerald-700 border border-emerald-200 bg-emerald-50 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-emerald-100"
                       >
                         Approve
-                      </button>
+                      </SubmitButton>
                     </form>
                     <form action={resolveReassignmentRequestAction}>
                       <input type="hidden" name="requestId" value={r.id} />
                       <input type="hidden" name="decision" value="REJECTED" />
-                      <button
-                        type="submit"
+                      <SubmitButton
+                        pendingLabel="…"
                         className="text-red-700 border border-red-200 bg-red-50 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-red-100"
                       >
                         Reject
-                      </button>
+                      </SubmitButton>
                     </form>
                   </div>
                 </td>

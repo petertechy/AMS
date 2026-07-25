@@ -1,4 +1,12 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool, types, type QueryResultRow } from "pg";
+
+// node-postgres returns BIGINT (OID 20) columns as JS strings by default, to avoid silent
+// precision loss for values beyond Number.MAX_SAFE_INTEGER. Every BIGINT column in this app
+// (created_at, allocated_at, etc.) is a Unix-ms timestamp, nowhere near that range, and callers
+// pass it straight to `new Date(ts)` — which silently returns "Invalid Date" for a numeric
+// *string* (Date only accepts a number or an ISO date string). Parse BIGINT as a number globally
+// so every existing/future `new Date(row.some_at)` call works without each call site casting it.
+types.setTypeParser(20, (val: string) => parseInt(val, 10));
 
 declare global {
   var __amsPool: Pool | undefined;
@@ -102,6 +110,47 @@ const SCHEMA_SQL = `
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at BIGINT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id SERIAL PRIMARY KEY,
+    actor_id INTEGER REFERENCES users(id),
+    actor_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id INTEGER,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    link TEXT,
+    read_at BIGINT,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
+
+  CREATE TABLE IF NOT EXISTS maintenance_records (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    opened_by INTEGER NOT NULL REFERENCES users(id),
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK(status IN ('IN_PROGRESS','COMPLETED')),
+    opened_at BIGINT NOT NULL,
+    completed_at BIGINT,
+    completion_notes TEXT,
+    cost DOUBLE PRECISION
+  );
+  CREATE INDEX IF NOT EXISTS idx_maintenance_asset ON maintenance_records(asset_id);
 `;
 
 /** Creates tables/indexes if they don't already exist. Safe to call repeatedly. */

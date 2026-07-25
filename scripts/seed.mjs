@@ -73,6 +73,64 @@ await pool.query(`
     value TEXT NOT NULL
   );
 `);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS departments (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at BIGINT NOT NULL
+  );
+`);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id SERIAL PRIMARY KEY,
+    actor_id INTEGER REFERENCES users(id),
+    actor_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id INTEGER,
+    created_at BIGINT NOT NULL
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at DESC);`);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    link TEXT,
+    read_at BIGINT,
+    created_at BIGINT NOT NULL
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);`);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS maintenance_records (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    opened_by INTEGER NOT NULL REFERENCES users(id),
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK(status IN ('IN_PROGRESS','COMPLETED')),
+    opened_at BIGINT NOT NULL,
+    completed_at BIGINT,
+    completion_notes TEXT,
+    cost DOUBLE PRECISION
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_maintenance_asset ON maintenance_records(asset_id);`);
+
+// Backfill the departments registry from any existing free-text values on assets/users.
+// Idempotent (ON CONFLICT DO NOTHING) and safe to re-run, same as the rest of this script.
+await pool.query(
+  `INSERT INTO departments (name, created_at)
+   SELECT DISTINCT department, $1::bigint FROM (
+     SELECT department FROM assets WHERE department IS NOT NULL AND department <> ''
+     UNION
+     SELECT department FROM users WHERE department IS NOT NULL AND department <> ''
+   ) d
+   ON CONFLICT (name) DO NOTHING`,
+  [Date.now()]
+);
 
 const { rows: countRows } = await pool.query("SELECT COUNT(*)::int as c FROM users");
 if (countRows[0].c > 0) {

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { listAllAllocations, listAssets, listUsers } from "@/lib/models";
 import { allocateAssetAction, returnAllocationAction } from "@/app/actions/allocations";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 
 function formatDate(ts: number | null) {
   if (!ts) return "-";
@@ -23,20 +25,10 @@ export default async function AdminAllocationsPage({
       <h1 className="text-xl font-semibold text-slate-900 mb-1">Allocations</h1>
       <p className="text-sm text-slate-500 mb-6">Assign assets to staff and track availability.</p>
 
-      {query.error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
-          {query.error}
-        </div>
-      )}
-      {query.allocated && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-          Asset allocated.
-        </div>
-      )}
+      {query.error && <Toast key={query.error} type="error" message={query.error} />}
+      {query.allocated && <Toast type="success" message="Asset allocated." />}
       {query.returned && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-          Asset marked as returned and made available.
-        </div>
+        <Toast type="success" message="Asset marked as returned and made available." />
       )}
 
       <div className="bg-white border border-slate-200 rounded-lg p-5 mb-6">
@@ -71,12 +63,12 @@ export default async function AdminAllocationsPage({
             </select>
           </div>
           <div>
-            <button
-              type="submit"
+            <SubmitButton
+              pendingLabel="Allocating…"
               className="w-full bg-slate-900 text-white rounded-md px-4 py-1.5 text-sm font-medium hover:bg-slate-800 transition"
             >
               Allocate
-            </button>
+            </SubmitButton>
           </div>
           <div className="sm:col-span-4">
             <label className="block text-xs font-medium text-slate-500 mb-1">Notes (optional)</label>
@@ -120,9 +112,9 @@ export default async function AdminAllocationsPage({
                   <form action={returnAllocationAction}>
                     <input type="hidden" name="allocationId" value={a.id} />
                     <input type="hidden" name="assetId" value={a.asset_id} />
-                    <button type="submit" className="text-slate-500 hover:text-slate-900 underline">
+                    <SubmitButton pendingLabel="…" className="text-slate-500 hover:text-slate-900 underline">
                       Mark returned
-                    </button>
+                    </SubmitButton>
                   </form>
                 </td>
               </tr>

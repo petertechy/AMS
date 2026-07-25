@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { resetPasswordAction } from "@/app/actions/auth";
 import PasswordInput from "@/components/PasswordInput";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 import { getUserByResetToken } from "@/lib/models";
 
 export default async function ResetPasswordPage({
@@ -35,11 +37,7 @@ export default async function ResetPasswordPage({
     <div>
       <h2 className="text-lg font-semibold text-slate-900 mb-6">Choose a new password</h2>
 
-      {query.error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
-          {query.error}
-        </div>
-      )}
+      {query.error && <Toast key={query.error} type="error" message={query.error} />}
 
       <form action={resetPasswordAction} className="space-y-4">
         <input type="hidden" name="token" value={token} />
@@ -61,12 +59,12 @@ export default async function ResetPasswordPage({
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
           />
         </div>
-        <button
-          type="submit"
+        <SubmitButton
+          pendingLabel="Resetting…"
           className="w-full bg-slate-900 text-white rounded-md py-2 text-sm font-medium hover:bg-slate-800 transition"
         >
           Reset password
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

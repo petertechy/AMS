@@ -14,6 +14,7 @@ import {
   getUserById,
   setResetToken,
   updateUserRoleAndDepartment,
+  logActivity,
   type Role,
 } from "@/lib/models";
 import { sendPasswordResetEmail } from "@/lib/email";
@@ -63,6 +64,14 @@ export async function createUserAction(formData: FormData): Promise<void> {
   });
 
   const resetPath = await issueResetLink(user.id, user.name, user.email);
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "account.created",
+    summary: `Created account for ${user.name} (${user.email}).`,
+    entityType: "user",
+    entityId: user.id,
+  });
 
   revalidatePath("/admin/accounts");
   redirect(`/admin/accounts?created=1&devLink=${encodeURIComponent(resetPath)}`);
@@ -84,6 +93,14 @@ export async function updateUserAction(formData: FormData): Promise<void> {
   if (!target) redirect("/admin/accounts");
 
   await updateUserRoleAndDepartment(userId, role === "ADMIN" ? "ADMIN" : "STAFF", department);
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "account.updated",
+    summary: `Updated account for ${target!.name} (role: ${role}, department: ${department ?? "none"}).`,
+    entityType: "user",
+    entityId: userId,
+  });
 
   revalidatePath("/admin/accounts");
   redirect("/admin/accounts?updated=1");
@@ -98,6 +115,14 @@ export async function sendResetLinkAction(formData: FormData): Promise<void> {
   if (!target) redirect("/admin/accounts");
 
   const resetPath = await issueResetLink(target!.id, target!.name, target!.email);
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "account.reset_link_sent",
+    summary: `Sent a password reset link to ${target!.name}.`,
+    entityType: "user",
+    entityId: target!.id,
+  });
 
   revalidatePath("/admin/accounts");
   redirect(`/admin/accounts?linkSent=1&devLink=${encodeURIComponent(resetPath)}`);

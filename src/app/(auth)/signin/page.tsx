@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { signinAction } from "@/app/actions/auth";
 import PasswordInput from "@/components/PasswordInput";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 import { isFeatureEnabled } from "@/lib/features";
 
 export default async function SignInPage({
@@ -15,16 +17,8 @@ export default async function SignInPage({
     <div>
       <h2 className="text-lg font-semibold text-slate-900 mb-6">Sign in</h2>
 
-      {params.reset && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-          Your password has been reset. Please sign in.
-        </div>
-      )}
-      {params.error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
-          {params.error}
-        </div>
-      )}
+      {params.reset && <Toast type="success" message="Your password has been reset. Please sign in." />}
+      {params.error && <Toast key={params.error} type="error" message={params.error} />}
 
       <form action={signinAction} className="space-y-4">
         <div>
@@ -46,12 +40,12 @@ export default async function SignInPage({
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
           />
         </div>
-        <button
-          type="submit"
+        <SubmitButton
+          pendingLabel="Signing in…"
           className="w-full bg-slate-900 text-white rounded-md py-2 text-sm font-medium hover:bg-slate-800 transition"
         >
           Sign in
-        </button>
+        </SubmitButton>
       </form>
 
       <div className="flex items-center justify-between mt-4 text-sm">

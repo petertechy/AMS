@@ -2,7 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { signupAction } from "@/app/actions/auth";
 import PasswordInput from "@/components/PasswordInput";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 import { isFeatureEnabled } from "@/lib/features";
+import { listDepartments } from "@/lib/models";
 
 export default async function SignUpPage({
   searchParams,
@@ -11,6 +14,7 @@ export default async function SignUpPage({
 }) {
   const params = await searchParams;
   const orgDomains = process.env.ORG_EMAIL_DOMAINS?.trim();
+  const departments = (await listDepartments()).map((d) => d.name);
 
   if (!(await isFeatureEnabled("public_signup"))) {
     redirect("/signin");
@@ -25,11 +29,7 @@ export default async function SignUpPage({
           Sign-up is restricted to organisational email addresses ({orgDomains}).
         </div>
       )}
-      {params.error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
-          {params.error}
-        </div>
-      )}
+      {params.error && <Toast key={params.error} type="error" message={params.error} />}
 
       <form action={signupAction} className="space-y-4">
         <div>
@@ -52,11 +52,18 @@ export default async function SignUpPage({
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Department (optional)</label>
-          <input
+          <select
             name="department"
-            type="text"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-          />
+            defaultValue=""
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">None</option>
+            {departments.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
@@ -76,12 +83,12 @@ export default async function SignUpPage({
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
           />
         </div>
-        <button
-          type="submit"
+        <SubmitButton
+          pendingLabel="Creating account…"
           className="w-full bg-slate-900 text-white rounded-md py-2 text-sm font-medium hover:bg-slate-800 transition"
         >
           Create account
-        </button>
+        </SubmitButton>
       </form>
 
       <div className="text-center mt-4 text-sm">

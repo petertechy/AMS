@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { getSession } from "@/lib/session";
-import { listUsers } from "@/lib/models";
+import { listUsers, listDepartments } from "@/lib/models";
 import { createUserAction, updateUserAction, sendResetLinkAction } from "@/app/actions/users";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -15,6 +17,7 @@ export default async function ManageAccountsPage({
   const query = await searchParams;
   const session = await getSession();
   const users = await listUsers();
+  const departments = (await listDepartments()).map((d) => d.name);
 
   return (
     <div>
@@ -23,34 +26,25 @@ export default async function ManageAccountsPage({
         Create staff accounts, change roles, and send password reset links.
       </p>
 
-      {query.error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
-          {query.error}
-        </div>
-      )}
-      {query.updated && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-          Account updated.
-        </div>
-      )}
+      {query.error && <Toast key={query.error} type="error" message={query.error} />}
+      {query.updated && <Toast type="success" message="Account updated." />}
       {(query.created || query.linkSent) && (
-        <div className="mb-4 space-y-2">
-          <div className="rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-            {query.created ? "Account created." : "Password reset link generated."}
-          </div>
-          {query.devLink && (
-            <div className="rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-sm px-3 py-2">
-              <p className="font-medium mb-1">
-                No email service is configured, so the link isn&apos;t being emailed automatically.
-              </p>
-              <p>
-                Share this link with the user so they can set their password:{" "}
-                <Link href={query.devLink} className="underline break-all">
-                  {query.devLink}
-                </Link>
-              </p>
-            </div>
-          )}
+        <Toast
+          type="success"
+          message={query.created ? "Account created." : "Password reset link generated."}
+        />
+      )}
+      {query.devLink && (
+        <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-sm px-3 py-2">
+          <p className="font-medium mb-1">
+            No email service is configured, so the link isn&apos;t being emailed automatically.
+          </p>
+          <p>
+            Share this link with the user so they can set their password:{" "}
+            <Link href={query.devLink} className="underline break-all">
+              {query.devLink}
+            </Link>
+          </p>
         </div>
       )}
 
@@ -76,10 +70,18 @@ export default async function ManageAccountsPage({
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Department</label>
-            <input
+            <select
               name="department"
-              className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-            />
+              defaultValue=""
+              className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white"
+            >
+              <option value="">None</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Role</label>
@@ -89,12 +91,12 @@ export default async function ManageAccountsPage({
             </select>
           </div>
           <div className="sm:col-span-4">
-            <button
-              type="submit"
+            <SubmitButton
+              pendingLabel="Creating…"
               className="bg-slate-900 text-white rounded-md px-4 py-1.5 text-sm font-medium hover:bg-slate-800 transition"
             >
               Create account
-            </button>
+            </SubmitButton>
           </div>
         </form>
         <p className="text-xs text-slate-400 mt-2">
@@ -134,19 +136,27 @@ export default async function ManageAccountsPage({
                       <option value="STAFF">Staff</option>
                       <option value="ADMIN">Admin</option>
                     </select>
-                    <input
-                      type="text"
+                    <select
                       name="department"
                       defaultValue={u.department ?? ""}
-                      placeholder="Department"
-                      className="hidden md:block w-28 rounded-md border border-slate-300 px-2 py-1 text-xs"
-                    />
-                    <button
-                      type="submit"
+                      className="hidden md:block w-28 rounded-md border border-slate-300 px-2 py-1 text-xs bg-white"
+                    >
+                      <option value="">None</option>
+                      {(u.department && !departments.includes(u.department)
+                        ? [...departments, u.department]
+                        : departments
+                      ).map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                    <SubmitButton
+                      pendingLabel="…"
                       className="text-slate-500 hover:text-slate-900 underline text-xs whitespace-nowrap"
                     >
                       Save
-                    </button>
+                    </SubmitButton>
                   </form>
                 </td>
                 <td className="px-4 py-3 text-slate-600 hidden md:table-cell">{u.department || "-"}</td>
@@ -154,9 +164,9 @@ export default async function ManageAccountsPage({
                 <td className="px-4 py-3 text-right">
                   <form action={sendResetLinkAction}>
                     <input type="hidden" name="userId" value={u.id} />
-                    <button type="submit" className="text-slate-500 hover:text-slate-900 underline text-xs">
+                    <SubmitButton pendingLabel="…" className="text-slate-500 hover:text-slate-900 underline text-xs">
                       Send reset link
-                    </button>
+                    </SubmitButton>
                   </form>
                 </td>
               </tr>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signoutAction } from "@/app/actions/auth";
+import SubmitButton from "@/components/SubmitButton";
 import type { SessionPayload } from "@/lib/auth";
 import {
   IconGrid,
@@ -11,6 +12,10 @@ import {
   IconSettings,
   IconLogout,
   IconClose,
+  IconBuilding,
+  IconHistory,
+  IconWrench,
+  IconArrowsRightLeft,
 } from "@/components/icons";
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -35,9 +40,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export default function Sidebar({
   session,
   showRequests,
+  showMaintenance,
+  showCheckout,
 }: {
   session: SessionPayload;
   showRequests: boolean;
+  showMaintenance: boolean;
+  showCheckout: boolean;
 }) {
   const isAdmin = session.role === "ADMIN";
 
@@ -64,6 +73,11 @@ export default function Sidebar({
           <NavLink href="/allocations">
             <IconClipboard /> My Allocations
           </NavLink>
+          {showCheckout && (
+            <NavLink href="/checkout">
+              <IconArrowsRightLeft /> Check-in/Check-out
+            </NavLink>
+          )}
         </div>
 
         {isAdmin && (
@@ -81,8 +95,19 @@ export default function Sidebar({
                   <IconInbox /> Requests
                 </NavLink>
               )}
+              {showMaintenance && (
+                <NavLink href="/admin/maintenance">
+                  <IconWrench /> Maintenance
+                </NavLink>
+              )}
+              <NavLink href="/admin/departments">
+                <IconBuilding /> Departments
+              </NavLink>
               <NavLink href="/admin/accounts">
                 <IconUsers /> Manage Accounts
+              </NavLink>
+              <NavLink href="/admin/audit-logs">
+                <IconHistory /> Audit Logs
               </NavLink>
               <NavLink href="/admin/settings">
                 <IconSettings /> Settings
@@ -103,12 +128,12 @@ export default function Sidebar({
           </div>
         </div>
         <form action={signoutAction} className="mt-1">
-          <button
-            type="submit"
-            className="w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          <SubmitButton
+            pendingLabel="Signing out…"
+            className="w-full !justify-start !gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
           >
             <IconLogout /> Sign out
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </aside>

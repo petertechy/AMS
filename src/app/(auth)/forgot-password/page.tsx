@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { forgotPasswordAction } from "@/app/actions/auth";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 
 export default async function ForgotPasswordPage({
   searchParams,
@@ -12,11 +14,7 @@ export default async function ForgotPasswordPage({
     <div>
       <h2 className="text-lg font-semibold text-slate-900 mb-6">Reset your password</h2>
 
-      {params.error && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
-          {params.error}
-        </div>
-      )}
+      {params.error && <Toast key={params.error} type="error" message={params.error} />}
 
       {params.sent ? (
         <div className="space-y-4">
@@ -53,12 +51,12 @@ export default async function ForgotPasswordPage({
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
             </div>
-            <button
-              type="submit"
+            <SubmitButton
+              pendingLabel="Sending…"
               className="w-full bg-slate-900 text-white rounded-md py-2 text-sm font-medium hover:bg-slate-800 transition"
             >
               Send reset link
-            </button>
+            </SubmitButton>
           </form>
           <div className="text-center mt-4 text-sm">
             <Link href="/signin" className="text-slate-500 hover:text-slate-900">

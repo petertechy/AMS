@@ -96,3 +96,50 @@ export function IconClose({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function IconBuilding({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={className}>
+      <rect x="4" y="2.5" width="9" height="15" rx="1" />
+      <path d="M6.5 5.5h1M11 5.5h1M6.5 8.5h1M11 8.5h1M6.5 11.5h1M11 11.5h1" />
+      <path d="M13 8v9.5h3.5V10a1 1 0 0 0-1-1H13Z" />
+      <path d="M7.5 17.5V15h2v2.5" />
+    </svg>
+  );
+}
+
+export function IconHistory({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={className}>
+      <path d="M10 5.5V10l3 2" />
+      <path d="M3.5 9.5a6.5 6.5 0 1 1 1.8 4.5" />
+      <path d="M2.5 12v-3h3" />
+    </svg>
+  );
+}
+
+export function IconBell({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={className}>
+      <path d="M5 8.5a5 5 0 0 1 10 0c0 3 1 4.5 1.5 5H3.5c.5-.5 1.5-2 1.5-5Z" />
+      <path d="M8.2 16a1.8 1.8 0 0 0 3.6 0" />
+    </svg>
+  );
+}
+
+export function IconWrench({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={className}>
+      <path d="M13.4 3.3a3.5 3.5 0 0 0-4.6 4.2L3.6 12.7a1.5 1.5 0 0 0 2.1 2.1l5.2-5.2a3.5 3.5 0 0 0 4.2-4.6l-2.1 2.1-1.7-.4-.4-1.7 2.1-2.1Z" />
+    </svg>
+  );
+}
+
+export function IconArrowsRightLeft({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={className}>
+      <path d="M4 6.5h11M11.5 3l3.5 3.5-3.5 3.5" />
+      <path d="M16 13.5H5M8.5 10 5 13.5 8.5 17" />
+    </svg>
+  );
+}

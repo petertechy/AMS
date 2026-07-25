@@ -1,5 +1,7 @@
 import { FEATURES, getFeatureFlags } from "@/lib/features";
 import { updateSettingsAction } from "@/app/actions/settings";
+import SubmitButton from "@/components/SubmitButton";
+import Toast from "@/components/Toast";
 
 export default async function AdminSettingsPage({
   searchParams,
@@ -16,11 +18,7 @@ export default async function AdminSettingsPage({
         Turn whole features on or off for everyone in your organisation.
       </p>
 
-      {query.saved && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-2">
-          Settings saved.
-        </div>
-      )}
+      {query.saved && <Toast type="success" message="Settings saved." />}
 
       <form action={updateSettingsAction}>
         <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
@@ -45,12 +43,12 @@ export default async function AdminSettingsPage({
           ))}
         </div>
 
-        <button
-          type="submit"
+        <SubmitButton
+          pendingLabel="Saving…"
           className="mt-5 bg-slate-900 text-white rounded-md px-5 py-2 text-sm font-medium hover:bg-slate-800 transition"
         >
           Save settings
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

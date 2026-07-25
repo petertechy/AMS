@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getAllSettings, setSetting } from "@/lib/models";
 
 export interface FeatureDef {
@@ -31,12 +32,28 @@ export const FEATURES: FeatureDef[] = [
       "Shows a monetary value field on assets (registration form and asset detail page). Turning this off hides cost information app-wide.",
     defaultEnabled: true,
   },
+  {
+    id: "maintenance_tracking",
+    label: "Maintenance tracking",
+    description:
+      "Lets admins open and complete maintenance records against available assets, and shows maintenance history on the asset detail page. Turning this off hides the Maintenance page and section for everyone.",
+    defaultEnabled: true,
+  },
+  {
+    id: "self_service_checkout",
+    label: "Self-service check-in / check-out",
+    description:
+      "Lets any staff member instantly check out an available asset to themselves and check it back in, without an admin allocating it. Turning this off hides the Check-in/Check-out page and asset-page buttons.",
+    defaultEnabled: true,
+  },
 ];
 
 const settingKey = (id: string) => `feature:${id}`;
 
-/** Returns a map of featureId -> enabled, applying defaults for anything not yet set. */
-export async function getFeatureFlags(): Promise<Record<string, boolean>> {
+/** Returns a map of featureId -> enabled, applying defaults for anything not yet set.
+ *  Wrapped in React's per-request cache() so the many isFeatureEnabled() calls on a
+ *  given page share one DB round-trip instead of one each. */
+export const getFeatureFlags = cache(async (): Promise<Record<string, boolean>> => {
   const stored = await getAllSettings();
   const flags: Record<string, boolean> = {};
   for (const feature of FEATURES) {
@@ -44,7 +61,7 @@ export async function getFeatureFlags(): Promise<Record<string, boolean>> {
     flags[feature.id] = raw === undefined ? feature.defaultEnabled : raw === "true";
   }
   return flags;
-}
+});
 
 export async function isFeatureEnabled(id: string): Promise<boolean> {
   const flags = await getFeatureFlags();

@@ -9,6 +9,7 @@ import {
   updateAssetCondition,
   getAssetById,
   getActiveAllocationForAsset,
+  logActivity,
   type AssetCondition,
 } from "@/lib/models";
 import { ASSET_CONDITIONS } from "@/lib/constants";
@@ -39,6 +40,14 @@ export async function updateConditionAction(formData: FormData): Promise<void> {
   }
 
   await updateAssetCondition(assetId, condition);
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "asset.condition_changed",
+    summary: `Changed condition of "${asset!.name}" to ${condition}.`,
+    entityType: "asset",
+    entityId: assetId,
+  });
   revalidatePath(`/assets/${assetId}`);
   revalidatePath("/dashboard");
   redirect(`/assets/${assetId}?updated=1`);
@@ -77,6 +86,14 @@ export async function createAssetAction(formData: FormData): Promise<void> {
     condition,
     purchaseDate,
     value,
+  });
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "asset.created",
+    summary: `Registered asset "${asset.name}".`,
+    entityType: "asset",
+    entityId: asset.id,
   });
 
   revalidatePath("/dashboard");
@@ -119,6 +136,14 @@ export async function updateAssetDetailsAction(formData: FormData): Promise<void
     specifications,
     purchaseDate,
     value,
+  });
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "asset.updated",
+    summary: `Updated asset "${name}".`,
+    entityType: "asset",
+    entityId: assetId,
   });
 
   revalidatePath("/dashboard");

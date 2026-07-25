@@ -418,3 +418,221 @@ export async function updateUserRoleAndDepartment(
 ): Promise<void> {
   await query("UPDATE users SET role = $1, department = $2 WHERE id = $3", [role, department, id]);
 }
+
+// ---------- Departments ----------
+
+export interface DepartmentRow {
+  id: number;
+  name: string;
+  created_at: number;
+}
+
+export async function listDepartments(): Promise<DepartmentRow[]> {
+  return query<DepartmentRow>("SELECT * FROM departments ORDER BY name");
+}
+
+export async function createDepartment(name: string): Promise<DepartmentRow> {
+  const row = await queryOne<DepartmentRow>(
+    `INSERT INTO departments (name, created_at) VALUES ($1, $2)
+     ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+     RETURNING *`,
+    [name, Date.now()]
+  );
+  return row!;
+}
+
+export async function renameDepartment(id: number, name: string): Promise<void> {
+  await query("UPDATE departments SET name = $1 WHERE id = $2", [name, id]);
+}
+
+export async function countDepartmentUsage(name: string): Promise<{ assets: number; users: number }> {
+  const [assetRow, userRow] = await Promise.all([
+    queryOne<{ c: string }>("SELECT COUNT(*)::int as c FROM assets WHERE department = $1", [name]),
+    queryOne<{ c: string }>("SELECT COUNT(*)::int as c FROM users WHERE department = $1", [name]),
+  ]);
+  return { assets: Number(assetRow?.c ?? 0), users: Number(userRow?.c ?? 0) };
+}
+
+export async function getDepartmentById(id: number): Promise<DepartmentRow | undefined> {
+  return queryOne<DepartmentRow>("SELECT * FROM departments WHERE id = $1", [id]);
+}
+
+export async function deleteDepartmentIfUnused(id: number): Promise<boolean> {
+  const dept = await getDepartmentById(id);
+  if (!dept) return false;
+  const usage = await countDepartmentUsage(dept.name);
+  if (usage.assets > 0 || usage.users > 0) return false;
+  await query("DELETE FROM departments WHERE id = $1", [id]);
+  return true;
+}
+
+// ---------- Activity log (audit trail) ----------
+
+export interface ActivityLogRow {
+  id: number;
+  actor_id: number | null;
+  actor_name: string;
+  action: string;
+  summary: string;
+  entity_type: string | null;
+  entity_id: number | null;
+  created_at: number;
+}
+
+export async function logActivity(input: {
+  actorId: number | null;
+  actorName: string;
+  action: string;
+  summary: string;
+  entityType?: string | null;
+  entityId?: number | null;
+}): Promise<void> {
+  await query(
+    `INSERT INTO activity_log (actor_id, actor_name, action, summary, entity_type, entity_id, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      input.actorId,
+      input.actorName,
+      input.action,
+      input.summary,
+      input.entityType ?? null,
+      input.entityId ?? null,
+      Date.now(),
+    ]
+  );
+}
+
+export async function listActivityLog(limit = 100): Promise<ActivityLogRow[]> {
+  return query<ActivityLogRow>("SELECT * FROM activity_log ORDER BY created_at DESC LIMIT $1", [limit]);
+}
+
+// ---------- Notifications ----------
+
+export interface NotificationRow {
+  id: number;
+  user_id: number;
+  message: string;
+  link: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export async function createNotification(input: {
+  userId: number;
+  message: string;
+  link?: string | null;
+}): Promise<void> {
+  await query(
+    `INSERT INTO notifications (user_id, message, link, created_at) VALUES ($1, $2, $3, $4)`,
+    [input.userId, input.message, input.link ?? null, Date.now()]
+  );
+}
+
+export async function listNotificationsForUser(userId: number, limit = 10): Promise<NotificationRow[]> {
+  return query<NotificationRow>(
+    "SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
+    [userId, limit]
+  );
+}
+
+export async function countUnreadNotifications(userId: number): Promise<number> {
+  const row = await queryOne<{ c: string }>(
+    "SELECT COUNT(*)::int as c FROM notifications WHERE user_id = $1 AND read_at IS NULL",
+    [userId]
+  );
+  return Number(row?.c ?? 0);
+}
+
+export async function markAllNotificationsRead(userId: number): Promise<void> {
+  await query("UPDATE notifications SET read_at = $1 WHERE user_id = $2 AND read_at IS NULL", [
+    Date.now(),
+    userId,
+  ]);
+}
+
+// ---------- Maintenance ----------
+
+export type MaintenanceStatus = "IN_PROGRESS" | "COMPLETED";
+
+export interface MaintenanceRecordRow {
+  id: number;
+  asset_id: number;
+  opened_by: number;
+  description: string;
+  status: MaintenanceStatus;
+  opened_at: number;
+  completed_at: number | null;
+  completion_notes: string | null;
+  cost: number | null;
+}
+
+export interface MaintenanceRecordWithNames extends MaintenanceRecordRow {
+  asset_name: string;
+  opened_by_name: string;
+}
+
+export async function createMaintenanceRecord(input: {
+  assetId: number;
+  openedBy: number;
+  description: string;
+}): Promise<MaintenanceRecordRow> {
+  const row = await queryOne<MaintenanceRecordRow>(
+    `INSERT INTO maintenance_records (asset_id, opened_by, description, status, opened_at)
+     VALUES ($1, $2, $3, 'IN_PROGRESS', $4)
+     RETURNING *`,
+    [input.assetId, input.openedBy, input.description, Date.now()]
+  );
+  await updateAssetStatus(input.assetId, "IN_MAINTENANCE");
+  return row!;
+}
+
+export async function getMaintenanceRecordById(id: number): Promise<MaintenanceRecordRow | undefined> {
+  return queryOne<MaintenanceRecordRow>("SELECT * FROM maintenance_records WHERE id = $1", [id]);
+}
+
+export async function completeMaintenanceRecord(
+  id: number,
+  input: { notes?: string | null; cost?: number | null }
+): Promise<void> {
+  const record = await getMaintenanceRecordById(id);
+  if (!record) return;
+  await query(
+    `UPDATE maintenance_records SET status = 'COMPLETED', completed_at = $1, completion_notes = $2, cost = $3 WHERE id = $4`,
+    [Date.now(), input.notes ?? null, input.cost ?? null, id]
+  );
+  await updateAssetStatus(record.asset_id, "AVAILABLE");
+}
+
+export async function listOpenMaintenanceRecords(): Promise<MaintenanceRecordWithNames[]> {
+  return query<MaintenanceRecordWithNames>(
+    `SELECT m.*, a.name as asset_name, u.name as opened_by_name
+     FROM maintenance_records m
+     JOIN assets a ON a.id = m.asset_id
+     JOIN users u ON u.id = m.opened_by
+     WHERE m.status = 'IN_PROGRESS'
+     ORDER BY m.opened_at DESC`
+  );
+}
+
+export async function listMaintenanceHistory(): Promise<MaintenanceRecordWithNames[]> {
+  return query<MaintenanceRecordWithNames>(
+    `SELECT m.*, a.name as asset_name, u.name as opened_by_name
+     FROM maintenance_records m
+     JOIN assets a ON a.id = m.asset_id
+     JOIN users u ON u.id = m.opened_by
+     WHERE m.status = 'COMPLETED'
+     ORDER BY m.completed_at DESC`
+  );
+}
+
+export async function listMaintenanceForAsset(assetId: number): Promise<MaintenanceRecordWithNames[]> {
+  return query<MaintenanceRecordWithNames>(
+    `SELECT m.*, a.name as asset_name, u.name as opened_by_name
+     FROM maintenance_records m
+     JOIN assets a ON a.id = m.asset_id
+     JOIN users u ON u.id = m.opened_by
+     WHERE m.asset_id = $1
+     ORDER BY m.opened_at DESC`,
+    [assetId]
+  );
+}

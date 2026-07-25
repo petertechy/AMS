@@ -110,7 +110,7 @@ export async function forgotPasswordAction(formData: FormData): Promise<void> {
 
   const { sent } = await sendPasswordResetEmail({ to: user!.email, name: user!.name, resetPath });
 
-  // If no email service is configured (no RESEND_API_KEY set), fall back to
+  // If no email service is configured (no POSTMARK_API_TOKEN set), fall back to
   // showing the link directly so local development still works end to end.
   if (sent) {
     redirect(`/forgot-password?sent=1`);

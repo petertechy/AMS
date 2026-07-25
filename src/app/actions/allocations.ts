@@ -12,6 +12,9 @@ import {
   resolveReassignmentRequest,
   getReassignmentRequestById,
   getUserById,
+  listUsers,
+  logActivity,
+  createNotification,
 } from "@/lib/models";
 import { isFeatureEnabled } from "@/lib/features";
 
@@ -35,6 +38,19 @@ export async function allocateAssetAction(formData: FormData): Promise<void> {
   }
 
   await createAllocation({ assetId, userId, allocatedBy: session!.userId, notes });
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "allocation.created",
+    summary: `Allocated "${asset!.name}" to ${user!.name}.`,
+    entityType: "asset",
+    entityId: assetId,
+  });
+  await createNotification({
+    userId,
+    message: `"${asset!.name}" has been allocated to you.`,
+    link: `/assets/${assetId}`,
+  });
 
   revalidatePath("/admin/allocations");
   revalidatePath(`/assets/${assetId}`);
@@ -49,8 +65,17 @@ export async function returnAllocationAction(formData: FormData): Promise<void> 
 
   const allocationId = Number(formData.get("allocationId"));
   const assetId = Number(formData.get("assetId"));
+  const asset = await getAssetById(assetId);
 
   await returnAllocation(allocationId);
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "allocation.returned",
+    summary: `Marked "${asset?.name ?? `asset #${assetId}`}" as returned.`,
+    entityType: "asset",
+    entityId: assetId,
+  });
 
   revalidatePath("/admin/allocations");
   revalidatePath(`/assets/${assetId}`);
@@ -77,6 +102,24 @@ export async function createReassignmentRequestAction(formData: FormData): Promi
   }
 
   await createReassignmentRequest({ assetId, requestedBy: session!.userId, reason });
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "reassignment.requested",
+    summary: `${session!.name} requested reassignment of "${asset!.name}".`,
+    entityType: "asset",
+    entityId: assetId,
+  });
+  const admins = (await listUsers()).filter((u) => u.role === "ADMIN");
+  await Promise.all(
+    admins.map((admin) =>
+      createNotification({
+        userId: admin.id,
+        message: `${session!.name} requested to reassign "${asset!.name}".`,
+        link: "/admin/requests",
+      })
+    )
+  );
 
   revalidatePath(`/assets/${assetId}`);
   revalidatePath("/admin/requests");
@@ -96,6 +139,24 @@ export async function resolveReassignmentRequestAction(formData: FormData): Prom
   if (decision !== "APPROVED" && decision !== "REJECTED") redirect("/admin/requests");
 
   await resolveReassignmentRequest(requestId, decision, session!.userId, notes);
+  const asset = await getAssetById(request!.asset_id);
+  await logActivity({
+    actorId: session!.userId,
+    actorName: session!.name,
+    action: "reassignment.resolved",
+    summary: `${decision === "APPROVED" ? "Approved" : "Rejected"} reassignment request for "${
+      asset?.name ?? `asset #${request!.asset_id}`
+    }".`,
+    entityType: "asset",
+    entityId: request!.asset_id,
+  });
+  await createNotification({
+    userId: request!.requested_by,
+    message: `Your reassignment request for "${asset?.name ?? `asset #${request!.asset_id}`}" was ${
+      decision === "APPROVED" ? "approved" : "rejected"
+    }.`,
+    link: `/assets/${request!.asset_id}`,
+  });
 
   revalidatePath("/admin/requests");
   revalidatePath(`/assets/${request!.asset_id}`);
