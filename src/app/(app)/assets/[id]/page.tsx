@@ -14,6 +14,10 @@ import {
   STATUS_LABELS,
   CONDITION_BADGE_CLASSES,
   STATUS_BADGE_CLASSES,
+  MAINTENANCE_PRIORITY_LABELS,
+  MAINTENANCE_STATUS_LABELS,
+  MAINTENANCE_PRIORITY_BADGE_CLASSES,
+  MAINTENANCE_STATUS_BADGE_CLASSES,
 } from "@/lib/constants";
 import Badge from "@/components/Badge";
 import SubmitButton from "@/components/SubmitButton";
@@ -270,28 +274,36 @@ export default async function AssetDetailPage({
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide border-b border-slate-200">
               <tr>
-                <th className="text-left px-5 py-2 font-medium">Description</th>
+                <th className="text-left px-5 py-2 font-medium">Title</th>
+                <th className="text-left px-5 py-2 font-medium">Priority</th>
+                <th className="text-left px-5 py-2 font-medium">Status</th>
                 <th className="text-left px-5 py-2 font-medium">Opened</th>
-                <th className="text-left px-5 py-2 font-medium">Completed</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {maintenanceHistory.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-5 py-2.5">{m.description}</td>
-                  <td className="px-5 py-2.5 text-slate-500">{formatDate(m.opened_at)}</td>
-                  <td className="px-5 py-2.5 text-slate-500">
-                    {m.completed_at ? (
-                      formatDate(m.completed_at)
-                    ) : (
-                      <span className="text-amber-600">In progress</span>
-                    )}
+                  <td className="px-5 py-2.5">
+                    <Link href={`/maintenance/${m.id}`} className="text-slate-900 hover:underline">
+                      {m.title}
+                    </Link>
                   </td>
+                  <td className="px-5 py-2.5">
+                    <Badge className={MAINTENANCE_PRIORITY_BADGE_CLASSES[m.priority]}>
+                      {MAINTENANCE_PRIORITY_LABELS[m.priority]}
+                    </Badge>
+                  </td>
+                  <td className="px-5 py-2.5">
+                    <Badge className={MAINTENANCE_STATUS_BADGE_CLASSES[m.status]}>
+                      {MAINTENANCE_STATUS_LABELS[m.status]}
+                    </Badge>
+                  </td>
+                  <td className="px-5 py-2.5 text-slate-500">{formatDate(m.opened_at)}</td>
                 </tr>
               ))}
               {maintenanceHistory.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-5 py-6 text-center text-slate-400">
+                  <td colSpan={4} className="px-5 py-6 text-center text-slate-400">
                     No maintenance history yet.
                   </td>
                 </tr>

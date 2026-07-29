@@ -552,87 +552,356 @@ export async function markAllNotificationsRead(userId: number): Promise<void> {
 
 // ---------- Maintenance ----------
 
-export type MaintenanceStatus = "IN_PROGRESS" | "COMPLETED";
+export type MaintenancePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type MaintenanceRequestStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "CANCELLED";
 
-export interface MaintenanceRecordRow {
+export interface MaintenanceRequestRow {
   id: number;
   asset_id: number;
-  opened_by: number;
+  reporter_id: number;
+  assignee_id: number | null;
+  title: string;
+  issue_type: string | null;
+  priority: MaintenancePriority;
+  status: MaintenanceRequestStatus;
   description: string;
-  status: MaintenanceStatus;
+  notes: string | null;
+  resolution_notes: string | null;
   opened_at: number;
-  completed_at: number | null;
-  completion_notes: string | null;
-  cost: number | null;
+  started_at: number | null;
+  resolved_at: number | null;
+  closed_at: number | null;
+  cancelled_at: number | null;
 }
 
-export interface MaintenanceRecordWithNames extends MaintenanceRecordRow {
+export interface MaintenanceRequestWithNames extends MaintenanceRequestRow {
   asset_name: string;
-  opened_by_name: string;
+  asset_tag: string | null;
+  reporter_name: string;
+  reporter_email: string;
+  assignee_name: string | null;
 }
 
-export async function createMaintenanceRecord(input: {
+const MAINTENANCE_SELECT = `
+  SELECT m.*, a.name as asset_name, a.serial_number as asset_tag,
+         r.name as reporter_name, r.email as reporter_email, ass.name as assignee_name
+  FROM maintenance_requests m
+  JOIN assets a ON a.id = m.asset_id
+  JOIN users r ON r.id = m.reporter_id
+  LEFT JOIN users ass ON ass.id = m.assignee_id
+`;
+
+async function maybeRevertAssetToAvailable(assetId: number): Promise<void> {
+  const asset = await getAssetById(assetId);
+  if (asset && asset.status === "IN_MAINTENANCE") {
+    await updateAssetStatus(assetId, "AVAILABLE");
+  }
+}
+
+export async function createMaintenanceRequest(input: {
   assetId: number;
-  openedBy: number;
+  reporterId: number;
+  title: string;
+  issueType?: string | null;
+  priority?: MaintenancePriority;
   description: string;
-}): Promise<MaintenanceRecordRow> {
-  const row = await queryOne<MaintenanceRecordRow>(
-    `INSERT INTO maintenance_records (asset_id, opened_by, description, status, opened_at)
-     VALUES ($1, $2, $3, 'IN_PROGRESS', $4)
+  notes?: string | null;
+}): Promise<MaintenanceRequestRow> {
+  const row = await queryOne<MaintenanceRequestRow>(
+    `INSERT INTO maintenance_requests (asset_id, reporter_id, title, issue_type, priority, status, description, notes, opened_at)
+     VALUES ($1, $2, $3, $4, $5, 'OPEN', $6, $7, $8)
      RETURNING *`,
-    [input.assetId, input.openedBy, input.description, Date.now()]
+    [
+      input.assetId,
+      input.reporterId,
+      input.title,
+      input.issueType ?? null,
+      input.priority ?? "MEDIUM",
+      input.description,
+      input.notes ?? null,
+      Date.now(),
+    ]
   );
-  await updateAssetStatus(input.assetId, "IN_MAINTENANCE");
   return row!;
 }
 
-export async function getMaintenanceRecordById(id: number): Promise<MaintenanceRecordRow | undefined> {
-  return queryOne<MaintenanceRecordRow>("SELECT * FROM maintenance_records WHERE id = $1", [id]);
+export async function getMaintenanceRequestById(id: number): Promise<MaintenanceRequestWithNames | undefined> {
+  return queryOne<MaintenanceRequestWithNames>(`${MAINTENANCE_SELECT} WHERE m.id = $1`, [id]);
 }
 
-export async function completeMaintenanceRecord(
+export async function updateMaintenanceRequest(
   id: number,
-  input: { notes?: string | null; cost?: number | null }
+  input: {
+    title: string;
+    issueType?: string | null;
+    priority: MaintenancePriority;
+    description: string;
+    notes?: string | null;
+  }
 ): Promise<void> {
-  const record = await getMaintenanceRecordById(id);
-  if (!record) return;
   await query(
-    `UPDATE maintenance_records SET status = 'COMPLETED', completed_at = $1, completion_notes = $2, cost = $3 WHERE id = $4`,
-    [Date.now(), input.notes ?? null, input.cost ?? null, id]
-  );
-  await updateAssetStatus(record.asset_id, "AVAILABLE");
-}
-
-export async function listOpenMaintenanceRecords(): Promise<MaintenanceRecordWithNames[]> {
-  return query<MaintenanceRecordWithNames>(
-    `SELECT m.*, a.name as asset_name, u.name as opened_by_name
-     FROM maintenance_records m
-     JOIN assets a ON a.id = m.asset_id
-     JOIN users u ON u.id = m.opened_by
-     WHERE m.status = 'IN_PROGRESS'
-     ORDER BY m.opened_at DESC`
+    `UPDATE maintenance_requests SET title = $1, issue_type = $2, priority = $3, description = $4, notes = $5 WHERE id = $6`,
+    [input.title, input.issueType ?? null, input.priority, input.description, input.notes ?? null, id]
   );
 }
 
-export async function listMaintenanceHistory(): Promise<MaintenanceRecordWithNames[]> {
-  return query<MaintenanceRecordWithNames>(
-    `SELECT m.*, a.name as asset_name, u.name as opened_by_name
-     FROM maintenance_records m
-     JOIN assets a ON a.id = m.asset_id
-     JOIN users u ON u.id = m.opened_by
-     WHERE m.status = 'COMPLETED'
-     ORDER BY m.completed_at DESC`
-  );
+export async function assignMaintenanceHandler(id: number, assigneeId: number | null): Promise<void> {
+  await query("UPDATE maintenance_requests SET assignee_id = $1 WHERE id = $2", [assigneeId, id]);
 }
 
-export async function listMaintenanceForAsset(assetId: number): Promise<MaintenanceRecordWithNames[]> {
-  return query<MaintenanceRecordWithNames>(
-    `SELECT m.*, a.name as asset_name, u.name as opened_by_name
-     FROM maintenance_records m
+export async function startMaintenanceRequest(id: number): Promise<MaintenanceRequestRow | undefined> {
+  const row = await queryOne<MaintenanceRequestRow>(
+    `UPDATE maintenance_requests SET status = 'IN_PROGRESS', started_at = $1 WHERE id = $2 RETURNING *`,
+    [Date.now(), id]
+  );
+  if (row) {
+    const asset = await getAssetById(row.asset_id);
+    if (asset && asset.status === "AVAILABLE") {
+      await updateAssetStatus(row.asset_id, "IN_MAINTENANCE");
+    }
+  }
+  return row;
+}
+
+export async function resolveMaintenanceRequest(
+  id: number,
+  resolutionNotes: string | null
+): Promise<MaintenanceRequestRow | undefined> {
+  const row = await queryOne<MaintenanceRequestRow>(
+    `UPDATE maintenance_requests SET status = 'RESOLVED', resolved_at = $1, resolution_notes = $2 WHERE id = $3 RETURNING *`,
+    [Date.now(), resolutionNotes, id]
+  );
+  if (row) await maybeRevertAssetToAvailable(row.asset_id);
+  return row;
+}
+
+export async function closeMaintenanceRequest(id: number): Promise<MaintenanceRequestRow | undefined> {
+  const row = await queryOne<MaintenanceRequestRow>(
+    `UPDATE maintenance_requests SET status = 'CLOSED', closed_at = $1 WHERE id = $2 RETURNING *`,
+    [Date.now(), id]
+  );
+  if (row) await maybeRevertAssetToAvailable(row.asset_id);
+  return row;
+}
+
+export async function cancelMaintenanceRequest(id: number): Promise<MaintenanceRequestRow | undefined> {
+  const row = await queryOne<MaintenanceRequestRow>(
+    `UPDATE maintenance_requests SET status = 'CANCELLED', cancelled_at = $1 WHERE id = $2 RETURNING *`,
+    [Date.now(), id]
+  );
+  if (row) await maybeRevertAssetToAvailable(row.asset_id);
+  return row;
+}
+
+export async function deleteMaintenanceRequest(id: number): Promise<void> {
+  await query("DELETE FROM maintenance_requests WHERE id = $1", [id]);
+}
+
+export interface MaintenanceRequestFilters {
+  q?: string;
+  assetId?: number;
+  status?: string;
+  priority?: string;
+  assigneeId?: number;
+  reporterId?: number;
+  openedFrom?: number;
+  openedTo?: number;
+}
+
+export async function listMaintenanceRequests(
+  filters: MaintenanceRequestFilters = {},
+  pagination: { limit: number; offset: number } = { limit: 15, offset: 0 }
+): Promise<{ rows: MaintenanceRequestWithNames[]; total: number }> {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  const add = (clause: string, value: unknown) => {
+    params.push(value);
+    clauses.push(clause.replace("?", `$${params.length}`));
+  };
+
+  if (filters.assetId) add("m.asset_id = ?", filters.assetId);
+  if (filters.status) add("m.status = ?", filters.status);
+  if (filters.priority) add("m.priority = ?", filters.priority);
+  if (filters.assigneeId) add("m.assignee_id = ?", filters.assigneeId);
+  if (filters.reporterId) add("m.reporter_id = ?", filters.reporterId);
+  if (filters.openedFrom) add("m.opened_at >= ?", filters.openedFrom);
+  if (filters.openedTo) add("m.opened_at <= ?", filters.openedTo);
+  if (filters.q) {
+    const like = `%${filters.q}%`;
+    const start = params.length;
+    params.push(like, like, like, like, like);
+    clauses.push(
+      `(m.title ILIKE $${start + 1} OR m.description ILIKE $${start + 2} OR a.name ILIKE $${start + 3} OR a.serial_number ILIKE $${start + 4} OR ass.name ILIKE $${start + 5})`
+    );
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const fromJoin = `FROM maintenance_requests m
      JOIN assets a ON a.id = m.asset_id
-     JOIN users u ON u.id = m.opened_by
-     WHERE m.asset_id = $1
-     ORDER BY m.opened_at DESC`,
+     JOIN users r ON r.id = m.reporter_id
+     LEFT JOIN users ass ON ass.id = m.assignee_id`;
+
+  const totalRow = await queryOne<{ c: number }>(`SELECT COUNT(*)::int as c ${fromJoin} ${where}`, params);
+  const total = Number(totalRow?.c ?? 0);
+
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+  const rows = await query<MaintenanceRequestWithNames>(
+    `SELECT m.*, a.name as asset_name, a.serial_number as asset_tag,
+            r.name as reporter_name, r.email as reporter_email, ass.name as assignee_name
+     ${fromJoin}
+     ${where}
+     ORDER BY m.opened_at DESC
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    [...params, pagination.limit, pagination.offset]
+  );
+
+  return { rows, total };
+}
+
+export interface MaintenanceStats {
+  total: number;
+  open: number;
+  inProgress: number;
+  resolved: number;
+  closed: number;
+  cancelled: number;
+  critical: number;
+  highPriority: number;
+}
+
+export async function getMaintenanceStats(): Promise<MaintenanceStats> {
+  const rows = await query<{ status: MaintenanceRequestStatus; priority: MaintenancePriority; c: number }>(
+    `SELECT status, priority, COUNT(*)::int as c FROM maintenance_requests GROUP BY status, priority`
+  );
+  const stats: MaintenanceStats = {
+    total: 0,
+    open: 0,
+    inProgress: 0,
+    resolved: 0,
+    closed: 0,
+    cancelled: 0,
+    critical: 0,
+    highPriority: 0,
+  };
+  for (const row of rows) {
+    stats.total += row.c;
+    if (row.status === "OPEN") stats.open += row.c;
+    if (row.status === "IN_PROGRESS") stats.inProgress += row.c;
+    if (row.status === "RESOLVED") stats.resolved += row.c;
+    if (row.status === "CLOSED") stats.closed += row.c;
+    if (row.status === "CANCELLED") stats.cancelled += row.c;
+    if (row.priority === "CRITICAL") stats.critical += row.c;
+    if (row.priority === "HIGH") stats.highPriority += row.c;
+  }
+  return stats;
+}
+
+export async function listMaintenanceForAsset(assetId: number): Promise<MaintenanceRequestWithNames[]> {
+  return query<MaintenanceRequestWithNames>(
+    `${MAINTENANCE_SELECT} WHERE m.asset_id = $1 ORDER BY m.opened_at DESC`,
     [assetId]
+  );
+}
+
+export async function listMaintenanceRequestsReportedBy(userId: number): Promise<MaintenanceRequestWithNames[]> {
+  return query<MaintenanceRequestWithNames>(
+    `${MAINTENANCE_SELECT} WHERE m.reporter_id = $1 ORDER BY m.opened_at DESC`,
+    [userId]
+  );
+}
+
+export async function listMaintenanceRequestsForUserAssets(
+  userId: number
+): Promise<MaintenanceRequestWithNames[]> {
+  return query<MaintenanceRequestWithNames>(
+    `${MAINTENANCE_SELECT}
+     WHERE m.asset_id IN (SELECT asset_id FROM allocations WHERE user_id = $1 AND returned_at IS NULL)
+     ORDER BY m.opened_at DESC`,
+    [userId]
+  );
+}
+
+// ---------- Maintenance attachments ----------
+
+export interface MaintenanceAttachmentMeta {
+  id: number;
+  request_id: number;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: number;
+  uploaded_by_name: string;
+  uploaded_at: number;
+}
+
+export interface MaintenanceAttachmentRow extends MaintenanceAttachmentMeta {
+  data: Buffer;
+}
+
+export async function createMaintenanceAttachment(input: {
+  requestId: number;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  data: Buffer;
+  uploadedBy: number;
+}): Promise<void> {
+  await query(
+    `INSERT INTO maintenance_attachments (request_id, filename, mime_type, size_bytes, data, uploaded_by, uploaded_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [input.requestId, input.filename, input.mimeType, input.sizeBytes, input.data, input.uploadedBy, Date.now()]
+  );
+}
+
+export async function listMaintenanceAttachments(requestId: number): Promise<MaintenanceAttachmentMeta[]> {
+  return query<MaintenanceAttachmentMeta>(
+    `SELECT ma.id, ma.request_id, ma.filename, ma.mime_type, ma.size_bytes, ma.uploaded_by, u.name as uploaded_by_name, ma.uploaded_at
+     FROM maintenance_attachments ma
+     JOIN users u ON u.id = ma.uploaded_by
+     WHERE ma.request_id = $1
+     ORDER BY ma.uploaded_at ASC`,
+    [requestId]
+  );
+}
+
+export async function getMaintenanceAttachmentById(id: number): Promise<MaintenanceAttachmentRow | undefined> {
+  return queryOne<MaintenanceAttachmentRow>("SELECT * FROM maintenance_attachments WHERE id = $1", [id]);
+}
+
+// ---------- Maintenance discussions ----------
+
+export interface MaintenanceCommentRow {
+  id: number;
+  request_id: number;
+  author_id: number;
+  author_name: string;
+  parent_id: number | null;
+  body: string;
+  created_at: number;
+}
+
+export async function createMaintenanceComment(input: {
+  requestId: number;
+  authorId: number;
+  parentId?: number | null;
+  body: string;
+}): Promise<void> {
+  await query(
+    `INSERT INTO maintenance_comments (request_id, author_id, parent_id, body, created_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [input.requestId, input.authorId, input.parentId ?? null, input.body, Date.now()]
+  );
+}
+
+export async function listMaintenanceComments(requestId: number): Promise<MaintenanceCommentRow[]> {
+  return query<MaintenanceCommentRow>(
+    `SELECT mc.id, mc.request_id, mc.author_id, u.name as author_name, mc.parent_id, mc.body, mc.created_at
+     FROM maintenance_comments mc
+     JOIN users u ON u.id = mc.author_id
+     WHERE mc.request_id = $1
+     ORDER BY mc.created_at ASC`,
+    [requestId]
   );
 }

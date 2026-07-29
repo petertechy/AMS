@@ -1,6 +1,6 @@
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
-const FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL;
-const POSTMARK_API_URL = "https://api.postmarkapp.com/email";
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL;
+const RESEND_API_URL = "https://api.resend.com/emails";
 
 export interface PasswordResetEmailInput {
   to: string;
@@ -10,11 +10,11 @@ export interface PasswordResetEmailInput {
 }
 
 /**
- * Sends a password-reset email via Postmark if POSTMARK_API_TOKEN and POSTMARK_FROM_EMAIL are
+ * Sends a password-reset email via Resend if RESEND_API_KEY and RESEND_FROM_EMAIL are
  * configured. If they aren't (e.g. local development), this quietly does nothing — callers
  * should still show the reset link on screen as a fallback for that case.
  *
- * Uses Postmark's REST API directly rather than their SDK — it's one POST request, and this
+ * Uses Resend's REST API directly rather than their SDK — it's one POST request, and this
  * avoids an extra dependency for a single call site.
  */
 export async function sendPasswordResetEmail({
@@ -22,25 +22,24 @@ export async function sendPasswordResetEmail({
   name,
   resetPath,
 }: PasswordResetEmailInput): Promise<{ sent: boolean }> {
-  const token = process.env.POSTMARK_API_TOKEN;
+  const token = process.env.RESEND_API_KEY;
   if (!token || !FROM_EMAIL) return { sent: false };
 
   const link = `${APP_URL}${resetPath}`;
 
   try {
-    const res = await fetch(POSTMARK_API_URL, {
+    const res = await fetch(RESEND_API_URL, {
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-Postmark-Server-Token": token,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        From: `AMS <${FROM_EMAIL}>`,
-        To: to,
-        Subject: "Reset your AMS password",
-        MessageStream: "outbound",
-        HtmlBody: `
+        from: `AMS <${FROM_EMAIL}>`,
+        to: [to],
+        subject: "Reset your AMS password",
+        html: `
           <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto;">
             <h2 style="color:#0f172a;">Reset your password</h2>
             <p style="color:#334155;">Hi ${name},</p>
@@ -62,15 +61,15 @@ export async function sendPasswordResetEmail({
     });
 
     const body = await res.json().catch(() => null);
-    // Postmark returns an ErrorCode of 0 on success even though the HTTP status is 200;
-    // non-zero (with a non-2xx status for most failure types) means it wasn't accepted.
-    if (!res.ok || !body || body.ErrorCode !== 0) {
-      console.error(`Postmark rejected the password reset email (${res.status}):`, body);
+    // Resend returns { id } on success. Failures come back as a non-2xx status with
+    // { name, message } (e.g. domain not verified, invalid from address).
+    if (!res.ok || !body?.id) {
+      console.error(`Resend rejected the password reset email (${res.status}):`, body);
       return { sent: false };
     }
     return { sent: true };
   } catch (err) {
-    console.error("Failed to send password reset email via Postmark:", err);
+    console.error("Failed to send password reset email via Resend:", err);
     return { sent: false };
   }
 }

@@ -105,19 +105,51 @@ await pool.query(`
 `);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);`);
 await pool.query(`
-  CREATE TABLE IF NOT EXISTS maintenance_records (
+  CREATE TABLE IF NOT EXISTS maintenance_requests (
     id SERIAL PRIMARY KEY,
     asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-    opened_by INTEGER NOT NULL REFERENCES users(id),
+    reporter_id INTEGER NOT NULL REFERENCES users(id),
+    assignee_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    issue_type TEXT,
+    priority TEXT NOT NULL DEFAULT 'MEDIUM' CHECK(priority IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+    status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN','IN_PROGRESS','RESOLVED','CLOSED','CANCELLED')),
     description TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK(status IN ('IN_PROGRESS','COMPLETED')),
+    notes TEXT,
+    resolution_notes TEXT,
     opened_at BIGINT NOT NULL,
-    completed_at BIGINT,
-    completion_notes TEXT,
-    cost DOUBLE PRECISION
+    started_at BIGINT,
+    resolved_at BIGINT,
+    closed_at BIGINT,
+    cancelled_at BIGINT
   );
 `);
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_maintenance_asset ON maintenance_records(asset_id);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_maintenance_requests_asset ON maintenance_requests(asset_id);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_maintenance_requests_status ON maintenance_requests(status);`);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS maintenance_attachments (
+    id SERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    data BYTEA NOT NULL,
+    uploaded_by INTEGER NOT NULL REFERENCES users(id),
+    uploaded_at BIGINT NOT NULL
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_maintenance_attachments_request ON maintenance_attachments(request_id);`);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS maintenance_comments (
+    id SERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    author_id INTEGER NOT NULL REFERENCES users(id),
+    parent_id INTEGER REFERENCES maintenance_comments(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_maintenance_comments_request ON maintenance_comments(request_id);`);
 
 // Backfill the departments registry from any existing free-text values on assets/users.
 // Idempotent (ON CONFLICT DO NOTHING) and safe to re-run, same as the rest of this script.
@@ -169,7 +201,7 @@ await insertAsset(["Ford Transit Custom Van", "Vehicle", "Logistics", "Mancheste
 await insertAsset(["Bosch Cordless Drill Set", "Tool", "Facilities", "Manchester Depot - Store Room", "SN-TL-3321", "18V, 2 batteries, carry case", "FAIR", "AVAILABLE", "2022-11-15", 180.0]);
 const printerId = await insertAsset(["HP LaserJet Pro Printer", "Equipment", "Finance", "London HQ - 3rd Floor", "SN-PR-4410", "Duplex, network-enabled, colour laser", "NEW", "AVAILABLE", "2025-01-20", 340.0]);
 await insertAsset(["Microsoft 365 E3 License", "Digital License", "IT", "N/A - Cloud", "LIC-M365-88213", "Annual subscription, includes Teams, Exchange, SharePoint", "NEW", "AVAILABLE", "2025-04-01", 240.0]);
-await insertAsset(["CNC Milling Machine", "Machinery", "Production", "Birmingham Plant - Bay 3", "SN-MC-7789", "3-axis, requires certified operator, annual service contract", "GOOD", "IN_MAINTENANCE", "2021-09-05", 42000.0]);
+const cncId = await insertAsset(["CNC Milling Machine", "Machinery", "Production", "Birmingham Plant - Bay 3", "SN-MC-7789", "3-axis, requires certified operator, annual service contract", "GOOD", "IN_MAINTENANCE", "2021-09-05", 42000.0]);
 const phoneId = await insertAsset(["iPhone 15", "IT Device", "Operations", "London HQ - 2nd Floor", "SN-PH-5541", "128GB, company mobile plan", "GOOD", "AVAILABLE", "2024-10-12", 699.0]);
 
 const monthAgo = now - 1000 * 60 * 60 * 24 * 30;
@@ -188,6 +220,74 @@ await pool.query(`UPDATE assets SET status = 'ALLOCATED', updated_at = $1 WHERE 
 await pool.query(
   `INSERT INTO reassignment_requests (asset_id, requested_by, reason, status, requested_at) VALUES ($1, $2, $3, 'PENDING', $4)`,
   [printerId, staff2Id, "Need a printer closer to the Finance desks for month-end reporting.", now - 1000 * 60 * 60 * 5]
+);
+
+const day = 1000 * 60 * 60 * 24;
+const insertMaintenanceRequest = async (m) => {
+  const { rows } = await pool.query(
+    `INSERT INTO maintenance_requests
+       (asset_id, reporter_id, assignee_id, title, issue_type, priority, status, description, resolution_notes, opened_at, started_at, resolved_at, closed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+    m
+  );
+  return rows[0].id;
+};
+
+const cncRequestId = await insertMaintenanceRequest([
+  cncId,
+  staff2Id,
+  adminId,
+  "CNC spindle bearing noise",
+  "Corrective",
+  "HIGH",
+  "IN_PROGRESS",
+  "Unusual grinding noise from the spindle assembly during operation. Needs inspection before further use.",
+  null,
+  now - 5 * day,
+  now - 2 * day,
+  null,
+  null,
+]);
+await insertMaintenanceRequest([
+  laptopId,
+  staff1Id,
+  null,
+  "Laptop won't charge",
+  "Hardware fault",
+  "MEDIUM",
+  "OPEN",
+  "Laptop stopped charging via USB-C; battery drains even when plugged in.",
+  null,
+  now - 1 * day,
+  null,
+  null,
+  null,
+]);
+await insertMaintenanceRequest([
+  phoneId,
+  staff1Id,
+  adminId,
+  "Cracked screen protector replaced",
+  "Preventive",
+  "LOW",
+  "CLOSED",
+  "Screen protector cracked, replaced under the company mobile care plan.",
+  "Replaced screen protector and tested touch responsiveness.",
+  now - 20 * day,
+  now - 19 * day,
+  now - 18 * day,
+  now - 17 * day,
+]);
+
+const cncCommentId = (
+  await pool.query(
+    `INSERT INTO maintenance_comments (request_id, author_id, body, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+    [cncRequestId, adminId, "Ordered a replacement bearing, ETA 3 days.", now - 1 * day]
+  )
+).rows[0].id;
+await pool.query(
+  `INSERT INTO maintenance_comments (request_id, author_id, parent_id, body, created_at) VALUES ($1, $2, $3, $4, $5)`,
+  [cncRequestId, staff2Id, cncCommentId, "Thanks — please prioritise this, it's a critical Bay 3 machine.", now - 1 * day + 1000 * 60 * 30]
 );
 
 console.log("Seed complete.");

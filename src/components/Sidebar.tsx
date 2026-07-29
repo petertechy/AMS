@@ -78,6 +78,11 @@ export default function Sidebar({
               <IconArrowsRightLeft /> Check-in/Check-out
             </NavLink>
           )}
+          {showMaintenance && (
+            <NavLink href="/maintenance">
+              <IconWrench /> My Maintenance Requests
+            </NavLink>
+          )}
         </div>
 
         {isAdmin && (

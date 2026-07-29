@@ -36,7 +36,7 @@ export const FEATURES: FeatureDef[] = [
     id: "maintenance_tracking",
     label: "Maintenance tracking",
     description:
-      "Lets admins open and complete maintenance records against available assets, and shows maintenance history on the asset detail page. Turning this off hides the Maintenance page and section for everyone.",
+      "Lets any staff member submit and track maintenance/repair requests on assets, with admins triaging, assigning, and resolving them from a full dashboard. Turning this off hides the Maintenance pages and section for everyone.",
     defaultEnabled: true,
   },
   {

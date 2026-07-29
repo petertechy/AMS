@@ -139,18 +139,48 @@ const SCHEMA_SQL = `
   );
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
 
-  CREATE TABLE IF NOT EXISTS maintenance_records (
+  CREATE TABLE IF NOT EXISTS maintenance_requests (
     id SERIAL PRIMARY KEY,
     asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-    opened_by INTEGER NOT NULL REFERENCES users(id),
+    reporter_id INTEGER NOT NULL REFERENCES users(id),
+    assignee_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    issue_type TEXT,
+    priority TEXT NOT NULL DEFAULT 'MEDIUM' CHECK(priority IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+    status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN','IN_PROGRESS','RESOLVED','CLOSED','CANCELLED')),
     description TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK(status IN ('IN_PROGRESS','COMPLETED')),
+    notes TEXT,
+    resolution_notes TEXT,
     opened_at BIGINT NOT NULL,
-    completed_at BIGINT,
-    completion_notes TEXT,
-    cost DOUBLE PRECISION
+    started_at BIGINT,
+    resolved_at BIGINT,
+    closed_at BIGINT,
+    cancelled_at BIGINT
   );
-  CREATE INDEX IF NOT EXISTS idx_maintenance_asset ON maintenance_records(asset_id);
+  CREATE INDEX IF NOT EXISTS idx_maintenance_requests_asset ON maintenance_requests(asset_id);
+  CREATE INDEX IF NOT EXISTS idx_maintenance_requests_status ON maintenance_requests(status);
+
+  CREATE TABLE IF NOT EXISTS maintenance_attachments (
+    id SERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    data BYTEA NOT NULL,
+    uploaded_by INTEGER NOT NULL REFERENCES users(id),
+    uploaded_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_maintenance_attachments_request ON maintenance_attachments(request_id);
+
+  CREATE TABLE IF NOT EXISTS maintenance_comments (
+    id SERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+    author_id INTEGER NOT NULL REFERENCES users(id),
+    parent_id INTEGER REFERENCES maintenance_comments(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_maintenance_comments_request ON maintenance_comments(request_id);
 `;
 
 /** Creates tables/indexes if they don't already exist. Safe to call repeatedly. */
