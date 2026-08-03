@@ -6,7 +6,7 @@ import {
   getActiveAllocationForAsset,
   listAllocationsForAsset,
   getUserById,
-  listMaintenanceForAsset,
+  listMaintenanceRequests,
 } from "@/lib/models";
 import {
   ASSET_CONDITIONS,
@@ -14,6 +14,8 @@ import {
   STATUS_LABELS,
   CONDITION_BADGE_CLASSES,
   STATUS_BADGE_CLASSES,
+  MAINTENANCE_STATUSES,
+  MAINTENANCE_PRIORITIES,
   MAINTENANCE_PRIORITY_LABELS,
   MAINTENANCE_STATUS_LABELS,
   MAINTENANCE_PRIORITY_BADGE_CLASSES,
@@ -44,6 +46,9 @@ export default async function AssetDetailPage({
     created?: string;
     checkedOut?: string;
     checkedIn?: string;
+    mQ?: string;
+    mStatus?: string;
+    mPriority?: string;
   }>;
 }) {
   const { id } = await params;
@@ -56,7 +61,15 @@ export default async function AssetDetailPage({
   const activeAllocation = await getActiveAllocationForAsset(assetId);
   const holder = activeAllocation ? await getUserById(activeAllocation.user_id) : null;
   const history = await listAllocationsForAsset(assetId);
-  const maintenanceHistory = await listMaintenanceForAsset(assetId);
+  const { rows: maintenanceHistory } = await listMaintenanceRequests(
+    {
+      assetId,
+      q: query.mQ || undefined,
+      status: query.mStatus || undefined,
+      priority: query.mPriority || undefined,
+    },
+    { limit: 50, offset: 0 }
+  );
 
   const isAdmin = session.role === "ADMIN";
   const isCurrentHolder = activeAllocation?.user_id === session.userId;
@@ -271,6 +284,38 @@ export default async function AssetDetailPage({
           <h2 className="text-sm font-semibold text-slate-900 px-5 py-3 border-b border-slate-200">
             Maintenance history
           </h2>
+          <form action={`/assets/${assetId}`} method="get" className="grid sm:grid-cols-4 gap-3 p-5 border-b border-slate-200">
+            <input
+              name="mQ"
+              defaultValue={query.mQ}
+              placeholder="Search title or description"
+              className="sm:col-span-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+            <select name="mStatus" defaultValue={query.mStatus ?? ""} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white">
+              <option value="">All Statuses</option>
+              {MAINTENANCE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {MAINTENANCE_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+            <select name="mPriority" defaultValue={query.mPriority ?? ""} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white">
+              <option value="">All Priorities</option>
+              {MAINTENANCE_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {MAINTENANCE_PRIORITY_LABELS[p]}
+                </option>
+              ))}
+            </select>
+            <div className="sm:col-span-4 flex gap-2">
+              <button type="submit" className="bg-slate-900 text-white rounded-md px-3 py-1.5 text-xs font-medium hover:bg-slate-800">
+                Apply
+              </button>
+              <Link href={`/assets/${assetId}`} className="bg-white border border-slate-300 text-slate-700 rounded-md px-3 py-1.5 text-xs font-medium hover:bg-slate-50">
+                Reset
+              </Link>
+            </div>
+          </form>
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide border-b border-slate-200">
               <tr>
@@ -304,7 +349,9 @@ export default async function AssetDetailPage({
               {maintenanceHistory.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-5 py-6 text-center text-slate-400">
-                    No maintenance history yet.
+                    {query.mQ || query.mStatus || query.mPriority
+                      ? "No maintenance requests match these filters."
+                      : "No maintenance history yet."}
                   </td>
                 </tr>
               )}

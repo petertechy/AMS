@@ -17,11 +17,19 @@ import {
   createMaintenanceComment,
   getAssetById,
   getUserById,
+  listUsers,
   logActivity,
   createNotification,
   type MaintenancePriority,
+  type MaintenanceRequestWithNames,
 } from "@/lib/models";
 import { isFeatureEnabled } from "@/lib/features";
+import {
+  sendMaintenanceSubmittedEmail,
+  sendMaintenanceAssignedEmail,
+  sendMaintenanceStatusEmail,
+  type MaintenanceStatusForEmail,
+} from "@/lib/email";
 
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -50,6 +58,24 @@ function revalidateMaintenance(assetId: number): void {
   revalidatePath("/maintenance");
   revalidatePath(`/assets/${assetId}`);
   revalidatePath("/dashboard");
+}
+
+/** Notifies the reporter (in-app + email) of a status change, unless they caused it themselves. */
+async function notifyReporterOfStatusChange(
+  request: MaintenanceRequestWithNames,
+  actorId: number,
+  status: MaintenanceStatusForEmail,
+  message: string
+): Promise<void> {
+  if (request.reporter_id === actorId) return;
+  await createNotification({ userId: request.reporter_id, message, link: `/maintenance/${request.id}` });
+  await sendMaintenanceStatusEmail({
+    to: request.reporter_email,
+    name: request.reporter_name,
+    title: request.title,
+    requestId: request.id,
+    status,
+  });
 }
 
 export async function createMaintenanceRequestAction(formData: FormData): Promise<void> {
@@ -91,6 +117,23 @@ export async function createMaintenanceRequestAction(formData: FormData): Promis
     entityType: "asset",
     entityId: assetId,
   });
+
+  const admins = (await listUsers()).filter((u) => u.role === "ADMIN" && u.id !== session!.userId);
+  for (const admin of admins) {
+    await createNotification({
+      userId: admin.id,
+      message: `${session!.name} submitted a new maintenance request for "${asset!.name}".`,
+      link: `/admin/maintenance/${request.id}`,
+    });
+    await sendMaintenanceSubmittedEmail({
+      to: admin.email,
+      name: admin.name,
+      reporterName: session!.name,
+      assetName: asset!.name,
+      title,
+      requestId: request.id,
+    });
+  }
 
   revalidateMaintenance(assetId);
   redirect(`${basePath}/${request.id}?created=1`);
@@ -164,11 +207,17 @@ export async function assignMaintenanceHandlerAction(formData: FormData): Promis
     entityType: "asset",
     entityId: request!.asset_id,
   });
-  if (assignee) {
+  if (assignee && assignee.id !== session!.userId) {
     await createNotification({
       userId: assignee.id,
       message: `You were assigned maintenance request "${request!.title}".`,
       link: `/admin/maintenance/${id}`,
+    });
+    await sendMaintenanceAssignedEmail({
+      to: assignee.email,
+      name: assignee.name,
+      title: request!.title,
+      requestId: id,
     });
   }
 
@@ -197,6 +246,12 @@ export async function startMaintenanceAction(formData: FormData): Promise<void> 
     entityType: "asset",
     entityId: request!.asset_id,
   });
+  await notifyReporterOfStatusChange(
+    request!,
+    session!.userId,
+    "IN_PROGRESS",
+    `Work has started on your maintenance request "${request!.title}".`
+  );
 
   revalidateMaintenance(request!.asset_id);
   redirect(withParam(returnTo, "started=1"));
@@ -225,11 +280,12 @@ export async function resolveMaintenanceAction(formData: FormData): Promise<void
     entityType: "asset",
     entityId: request!.asset_id,
   });
-  await createNotification({
-    userId: request!.reporter_id,
-    message: `Your maintenance request "${request!.title}" was resolved.`,
-    link: `/maintenance/${id}`,
-  });
+  await notifyReporterOfStatusChange(
+    request!,
+    session!.userId,
+    "RESOLVED",
+    `Your maintenance request "${request!.title}" was resolved.`
+  );
 
   revalidateMaintenance(request!.asset_id);
   redirect(withParam(returnTo, "resolved=1"));
@@ -256,6 +312,12 @@ export async function closeMaintenanceAction(formData: FormData): Promise<void> 
     entityType: "asset",
     entityId: request!.asset_id,
   });
+  await notifyReporterOfStatusChange(
+    request!,
+    session!.userId,
+    "CLOSED",
+    `Your maintenance request "${request!.title}" was closed.`
+  );
 
   revalidateMaintenance(request!.asset_id);
   redirect(withParam(returnTo, "closed=1"));
@@ -286,6 +348,12 @@ export async function cancelMaintenanceAction(formData: FormData): Promise<void>
     entityType: "asset",
     entityId: request!.asset_id,
   });
+  await notifyReporterOfStatusChange(
+    request!,
+    session!.userId,
+    "CANCELLED",
+    `Your maintenance request "${request!.title}" was cancelled.`
+  );
 
   revalidateMaintenance(request!.asset_id);
   redirect(withParam(returnTo, "cancelled=1"));

@@ -114,8 +114,9 @@ Settings unless noted:
   account changes across the organisation
 - **Notifications** — a bell in the top bar for reassignment requests, resolutions, and
   allocations, always on
-- **Maintenance** (`/admin/maintenance`) — open/complete maintenance records against available
-  assets, with history shown on each asset's detail page
+- **Maintenance Requests** (`/maintenance` for staff, `/admin/maintenance` for admins) — a full
+  self-service ticketing workflow for reporting and tracking asset repairs, with attachments,
+  discussion threads, and email notifications. See [docs/MAINTENANCE_REQUESTS.md](docs/MAINTENANCE_REQUESTS.md).
 - **Check-in/Check-out** (`/checkout`) — lets staff instantly self-serve check an available asset
   out to themselves and back in, no admin approval needed
 

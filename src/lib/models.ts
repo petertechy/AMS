@@ -798,13 +798,6 @@ export async function getMaintenanceStats(): Promise<MaintenanceStats> {
   return stats;
 }
 
-export async function listMaintenanceForAsset(assetId: number): Promise<MaintenanceRequestWithNames[]> {
-  return query<MaintenanceRequestWithNames>(
-    `${MAINTENANCE_SELECT} WHERE m.asset_id = $1 ORDER BY m.opened_at DESC`,
-    [assetId]
-  );
-}
-
 export async function listMaintenanceRequestsReportedBy(userId: number): Promise<MaintenanceRequestWithNames[]> {
   return query<MaintenanceRequestWithNames>(
     `${MAINTENANCE_SELECT} WHERE m.reporter_id = $1 ORDER BY m.opened_at DESC`,
