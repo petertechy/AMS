@@ -28,6 +28,7 @@ export default async function DashboardPage({
     status: sp.status || undefined,
     location: sp.location || undefined,
     q: sp.q || undefined,
+    sort: sp.sort || undefined,
   };
 
   const assets = await listAssets(filters);
@@ -54,7 +55,9 @@ export default async function DashboardPage({
     },
   ];
 
-  const hasFilters = Object.values(filters).some(Boolean);
+  const hasFilters = [filters.department, filters.category, filters.condition, filters.status, filters.location, filters.q].some(
+    Boolean
+  );
 
   return (
     <div>
@@ -160,6 +163,20 @@ export default async function DashboardPage({
                 {l}
               </option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Sort by</label>
+          <select
+            name="sort"
+            defaultValue={filters.sort || "name_asc"}
+            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white"
+          >
+            <option value="name_asc">Name (A–Z)</option>
+            <option value="name_desc">Name (Z–A)</option>
+            <option value="department_asc">Department (A–Z)</option>
+            <option value="condition_asc">Condition</option>
+            <option value="status_asc">Status</option>
           </select>
         </div>
         <div className="col-span-2 sm:col-span-3 lg:col-span-6 flex gap-2 justify-end">

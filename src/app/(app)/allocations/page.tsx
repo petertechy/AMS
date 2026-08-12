@@ -14,11 +14,19 @@ const REQUEST_STATUS_BADGE: Record<string, string> = {
   REJECTED: "bg-red-50 text-red-700 border-red-200",
 };
 
-export default async function MyAllocationsPage() {
+export default async function MyAllocationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; sort?: string }>;
+}) {
   const session = await getSession();
   if (!session) return null;
 
-  const allocations = await listAllocationsForUser(session.userId);
+  const query = await searchParams;
+  const q = query.q || undefined;
+  const sort = query.sort || "allocated_desc";
+
+  const allocations = await listAllocationsForUser(session.userId, { q, sort });
   const active = allocations.filter((a) => !a.returned_at);
   const past = allocations.filter((a) => a.returned_at);
   const myRequests = await listReassignmentRequests({ requestedBy: session.userId });
@@ -27,6 +35,44 @@ export default async function MyAllocationsPage() {
     <div>
       <h1 className="text-xl font-semibold text-slate-900 mb-1">My Allocations</h1>
       <p className="text-sm text-slate-500 mb-6">Assets currently assigned to you and your allocation history.</p>
+
+      <form className="bg-white border border-slate-200 rounded-lg p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-slate-500 mb-1">Search by asset</label>
+          <input
+            name="q"
+            defaultValue={q || ""}
+            placeholder="Asset name…"
+            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Sort by</label>
+          <select
+            name="sort"
+            defaultValue={sort}
+            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white"
+          >
+            <option value="allocated_desc">Allocated (newest first)</option>
+            <option value="allocated_asc">Allocated (oldest first)</option>
+            <option value="asset_asc">Asset name (A–Z)</option>
+            <option value="asset_desc">Asset name (Z–A)</option>
+          </select>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="bg-slate-900 text-white rounded-md px-4 py-1.5 text-sm font-medium hover:bg-slate-800 transition"
+          >
+            Apply
+          </button>
+          {(q || query.sort) && (
+            <Link href="/allocations" className="text-sm text-slate-500 hover:text-slate-900 self-center">
+              Clear
+            </Link>
+          )}
+        </div>
+      </form>
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden mb-6">
         <h2 className="text-sm font-semibold text-slate-900 px-5 py-3 border-b border-slate-200">

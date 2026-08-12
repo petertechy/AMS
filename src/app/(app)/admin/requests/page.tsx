@@ -19,11 +19,13 @@ const REQUEST_STATUS_BADGE: Record<string, string> = {
 export default async function AdminRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ resolved?: string }>;
+  searchParams: Promise<{ resolved?: string; q?: string; sort?: string }>;
 }) {
   const query = await searchParams;
-  const pending = await listReassignmentRequests({ status: "PENDING" });
-  const resolved = (await listReassignmentRequests()).filter((r) => r.status !== "PENDING");
+  const q = query.q || undefined;
+  const sort = query.sort || "requested_desc";
+  const pending = await listReassignmentRequests({ status: "PENDING", q, sort });
+  const resolved = (await listReassignmentRequests({ q, sort })).filter((r) => r.status !== "PENDING");
 
   return (
     <div>
@@ -31,6 +33,44 @@ export default async function AdminRequestsPage({
       <p className="text-sm text-slate-500 mb-6">Review and resolve staff requests to reassign assets.</p>
 
       {query.resolved && <Toast type="success" message="Request resolved." />}
+
+      <form className="bg-white border border-slate-200 rounded-lg p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-slate-500 mb-1">Search</label>
+          <input
+            name="q"
+            defaultValue={q || ""}
+            placeholder="Asset, requester or reason…"
+            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Sort by</label>
+          <select
+            name="sort"
+            defaultValue={sort}
+            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white"
+          >
+            <option value="requested_desc">Submitted (newest first)</option>
+            <option value="requested_asc">Submitted (oldest first)</option>
+            <option value="asset_asc">Asset name (A–Z)</option>
+            <option value="requester_asc">Requester name (A–Z)</option>
+          </select>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="bg-slate-900 text-white rounded-md px-4 py-1.5 text-sm font-medium hover:bg-slate-800 transition"
+          >
+            Apply
+          </button>
+          {(q || query.sort) && (
+            <Link href="/admin/requests" className="text-sm text-slate-500 hover:text-slate-900 self-center">
+              Clear
+            </Link>
+          )}
+        </div>
+      </form>
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden mb-6">
         <h2 className="text-sm font-semibold text-slate-900 px-5 py-3 border-b border-slate-200">

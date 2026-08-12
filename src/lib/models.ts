@@ -133,7 +133,19 @@ export interface AssetFilters {
   status?: string;
   location?: string;
   q?: string;
+  sort?: string;
 }
+
+const ASSET_SORT_COLUMNS: Record<string, string> = {
+  name_asc: "name ASC",
+  name_desc: "name DESC",
+  department_asc: "department ASC",
+  department_desc: "department DESC",
+  condition_asc: "condition ASC",
+  condition_desc: "condition DESC",
+  status_asc: "status ASC",
+  status_desc: "status DESC",
+};
 
 export async function listAssets(filters: AssetFilters = {}): Promise<AssetRow[]> {
   const clauses: string[] = [];
@@ -158,7 +170,8 @@ export async function listAssets(filters: AssetFilters = {}): Promise<AssetRow[]
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  return query<AssetRow>(`SELECT * FROM assets ${where} ORDER BY name`, params);
+  const orderBy = ASSET_SORT_COLUMNS[filters.sort ?? ""] ?? ASSET_SORT_COLUMNS.name_asc;
+  return query<AssetRow>(`SELECT * FROM assets ${where} ORDER BY ${orderBy}`, params);
 }
 
 export async function getAssetById(id: number): Promise<AssetRow | undefined> {
@@ -294,16 +307,40 @@ export async function returnAllocation(allocationId: number): Promise<void> {
   await updateAssetStatus(allocation.asset_id, "AVAILABLE");
 }
 
-export async function listAllocationsForUser(userId: number): Promise<AllocationWithNames[]> {
+export interface AllocationFilters {
+  q?: string;
+  sort?: string;
+}
+
+const ALLOCATION_SORT_COLUMNS: Record<string, string> = {
+  allocated_desc: "al.allocated_at DESC",
+  allocated_asc: "al.allocated_at ASC",
+  asset_asc: "a.name ASC",
+  asset_desc: "a.name DESC",
+  holder_asc: "u.name ASC",
+  holder_desc: "u.name DESC",
+};
+
+export async function listAllocationsForUser(
+  userId: number,
+  filters: AllocationFilters = {}
+): Promise<AllocationWithNames[]> {
+  const params: unknown[] = [userId];
+  const clauses = ["al.user_id = $1"];
+  if (filters.q) {
+    params.push(`%${filters.q}%`);
+    clauses.push(`a.name ILIKE $${params.length}`);
+  }
+  const orderBy = ALLOCATION_SORT_COLUMNS[filters.sort ?? ""] ?? ALLOCATION_SORT_COLUMNS.allocated_desc;
   return query<AllocationWithNames>(
     `SELECT al.*, a.name as asset_name, u.name as user_name, u.email as user_email, ab.name as allocated_by_name
      FROM allocations al
      JOIN assets a ON a.id = al.asset_id
      JOIN users u ON u.id = al.user_id
      JOIN users ab ON ab.id = al.allocated_by
-     WHERE al.user_id = $1
-     ORDER BY al.allocated_at DESC`,
-    [userId]
+     WHERE ${clauses.join(" AND ")}
+     ORDER BY ${orderBy}`,
+    params
   );
 }
 
@@ -320,14 +357,26 @@ export async function listAllocationsForAsset(assetId: number): Promise<Allocati
   );
 }
 
-export async function listAllAllocations(): Promise<AllocationWithNames[]> {
+export async function listAllAllocations(filters: AllocationFilters = {}): Promise<AllocationWithNames[]> {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  if (filters.q) {
+    params.push(`%${filters.q}%`, `%${filters.q}%`, `%${filters.q}%`);
+    clauses.push(
+      `(a.name ILIKE $${params.length - 2} OR u.name ILIKE $${params.length - 1} OR u.email ILIKE $${params.length})`
+    );
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const orderBy = ALLOCATION_SORT_COLUMNS[filters.sort ?? ""] ?? ALLOCATION_SORT_COLUMNS.allocated_desc;
   return query<AllocationWithNames>(
     `SELECT al.*, a.name as asset_name, u.name as user_name, u.email as user_email, ab.name as allocated_by_name
      FROM allocations al
      JOIN assets a ON a.id = al.asset_id
      JOIN users u ON u.id = al.user_id
      JOIN users ab ON ab.id = al.allocated_by
-     ORDER BY al.allocated_at DESC`
+     ${where}
+     ORDER BY ${orderBy}`,
+    params
   );
 }
 
@@ -347,8 +396,17 @@ export async function createReassignmentRequest(input: {
   return row!;
 }
 
+const REQUEST_SORT_COLUMNS: Record<string, string> = {
+  requested_desc: "rr.requested_at DESC",
+  requested_asc: "rr.requested_at ASC",
+  asset_asc: "a.name ASC",
+  asset_desc: "a.name DESC",
+  requester_asc: "u.name ASC",
+  requester_desc: "u.name DESC",
+};
+
 export async function listReassignmentRequests(
-  filters: { status?: RequestStatus; requestedBy?: number } = {}
+  filters: { status?: RequestStatus; requestedBy?: number; q?: string; sort?: string } = {}
 ): Promise<ReassignmentRequestWithNames[]> {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -360,7 +418,14 @@ export async function listReassignmentRequests(
     params.push(filters.requestedBy);
     clauses.push(`rr.requested_by = $${params.length}`);
   }
+  if (filters.q) {
+    params.push(`%${filters.q}%`, `%${filters.q}%`, `%${filters.q}%`);
+    clauses.push(
+      `(a.name ILIKE $${params.length - 2} OR u.name ILIKE $${params.length - 1} OR rr.reason ILIKE $${params.length})`
+    );
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const orderBy = REQUEST_SORT_COLUMNS[filters.sort ?? ""] ?? REQUEST_SORT_COLUMNS.requested_desc;
   return query<ReassignmentRequestWithNames>(
     `SELECT rr.*, a.name as asset_name, u.name as requested_by_name, ru.name as resolved_by_name
      FROM reassignment_requests rr
@@ -368,7 +433,7 @@ export async function listReassignmentRequests(
      JOIN users u ON u.id = rr.requested_by
      LEFT JOIN users ru ON ru.id = rr.resolved_by
      ${where}
-     ORDER BY rr.requested_at DESC`,
+     ORDER BY ${orderBy}`,
     params
   );
 }
