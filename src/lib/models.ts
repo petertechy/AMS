@@ -55,6 +55,7 @@ export interface ReassignmentRequestRow {
   asset_id: number;
   requested_by: number;
   reason: string;
+  new_owner_id: number | null;
   status: RequestStatus;
   requested_at: number;
   resolved_at: number | null;
@@ -66,6 +67,7 @@ export interface ReassignmentRequestWithNames extends ReassignmentRequestRow {
   asset_name: string;
   requested_by_name: string;
   resolved_by_name: string | null;
+  new_owner_name: string | null;
 }
 
 // ---------- Users ----------
@@ -386,12 +388,13 @@ export async function createReassignmentRequest(input: {
   assetId: number;
   requestedBy: number;
   reason: string;
+  newOwnerId?: number | null;
 }): Promise<ReassignmentRequestRow> {
   const row = await queryOne<ReassignmentRequestRow>(
-    `INSERT INTO reassignment_requests (asset_id, requested_by, reason, status, requested_at)
-     VALUES ($1, $2, $3, 'PENDING', $4)
+    `INSERT INTO reassignment_requests (asset_id, requested_by, reason, new_owner_id, status, requested_at)
+     VALUES ($1, $2, $3, $4, 'PENDING', $5)
      RETURNING *`,
-    [input.assetId, input.requestedBy, input.reason, Date.now()]
+    [input.assetId, input.requestedBy, input.reason, input.newOwnerId ?? null, Date.now()]
   );
   return row!;
 }
@@ -427,11 +430,13 @@ export async function listReassignmentRequests(
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const orderBy = REQUEST_SORT_COLUMNS[filters.sort ?? ""] ?? REQUEST_SORT_COLUMNS.requested_desc;
   return query<ReassignmentRequestWithNames>(
-    `SELECT rr.*, a.name as asset_name, u.name as requested_by_name, ru.name as resolved_by_name
+    `SELECT rr.*, a.name as asset_name, u.name as requested_by_name, ru.name as resolved_by_name,
+            nu.name as new_owner_name
      FROM reassignment_requests rr
      JOIN assets a ON a.id = rr.asset_id
      JOIN users u ON u.id = rr.requested_by
      LEFT JOIN users ru ON ru.id = rr.resolved_by
+     LEFT JOIN users nu ON nu.id = rr.new_owner_id
      ${where}
      ORDER BY ${orderBy}`,
     params
@@ -442,17 +447,26 @@ export async function getReassignmentRequestById(id: number): Promise<Reassignme
   return queryOne<ReassignmentRequestRow>("SELECT * FROM reassignment_requests WHERE id = $1", [id]);
 }
 
+/**
+ * Records a decision on a reassignment request. For APPROVED, `newOwnerId` is persisted onto
+ * the request (in case the requester didn't suggest one, or the admin overrode it) — this
+ * function only updates the request row itself; actually moving the asset to its new holder
+ * is done separately in resolveReassignmentRequestAction via returnAllocation/createAllocation,
+ * since that involves the allocations table and should be one atomic step from the caller's view.
+ */
 export async function resolveReassignmentRequest(
   id: number,
   status: "APPROVED" | "REJECTED",
   resolvedBy: number,
-  notes?: string | null
+  notes?: string | null,
+  newOwnerId?: number | null
 ): Promise<void> {
   await query(
     `UPDATE reassignment_requests
-     SET status = $1, resolved_at = $2, resolved_by = $3, resolution_notes = $4
-     WHERE id = $5`,
-    [status, Date.now(), resolvedBy, notes ?? null, id]
+     SET status = $1, resolved_at = $2, resolved_by = $3, resolution_notes = $4,
+         new_owner_id = COALESCE($5, new_owner_id)
+     WHERE id = $6`,
+    [status, Date.now(), resolvedBy, notes ?? null, newOwnerId ?? null, id]
   );
 }
 

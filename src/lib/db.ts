@@ -94,12 +94,16 @@ const SCHEMA_SQL = `
     asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     requested_by INTEGER NOT NULL REFERENCES users(id),
     reason TEXT NOT NULL,
+    new_owner_id INTEGER REFERENCES users(id),
     status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPROVED','REJECTED')),
     requested_at BIGINT NOT NULL,
     resolved_at BIGINT,
     resolved_by INTEGER REFERENCES users(id),
     resolution_notes TEXT
   );
+  -- Added after initial release: the table above already existed in deployed databases
+  -- without this column, so it's backfilled here rather than via CREATE TABLE alone.
+  ALTER TABLE reassignment_requests ADD COLUMN IF NOT EXISTS new_owner_id INTEGER REFERENCES users(id);
 
   CREATE INDEX IF NOT EXISTS idx_assets_department ON assets(department);
   CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);

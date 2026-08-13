@@ -6,6 +6,7 @@ import {
   getActiveAllocationForAsset,
   listAllocationsForAsset,
   getUserById,
+  listUsers,
   listMaintenanceRequests,
 } from "@/lib/models";
 import {
@@ -75,6 +76,9 @@ export default async function AssetDetailPage({
   const isCurrentHolder = activeAllocation?.user_id === session.userId;
   const canUpdateCondition = isAdmin || isCurrentHolder;
   const reassignmentEnabled = await isFeatureEnabled("reassignment_requests");
+  const reassignmentCandidates = reassignmentEnabled
+    ? (await listUsers()).filter((u) => u.id !== activeAllocation?.user_id)
+    : [];
   const valueTrackingEnabled = await isFeatureEnabled("asset_value_tracking");
   const selfServiceEnabled = await isFeatureEnabled("self_service_checkout");
   const maintenanceEnabled = await isFeatureEnabled("maintenance_tracking");
@@ -233,6 +237,26 @@ export default async function AssetDetailPage({
                 placeholder="Why does this asset need to be reassigned?"
                 className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Reassign to (optional)
+                </label>
+                <select
+                  name="newOwnerId"
+                  defaultValue=""
+                  className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white"
+                >
+                  <option value="">No preference &mdash; let admin choose</option>
+                  {reassignmentCandidates.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  Your suggestion still needs admin approval before the asset moves.
+                </p>
+              </div>
               <SubmitButton
                 pendingLabel="Submitting…"
                 className="bg-white border border-slate-300 text-slate-700 rounded-md px-4 py-1.5 text-sm font-medium hover:bg-slate-50 transition"

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listReassignmentRequests } from "@/lib/models";
+import { listReassignmentRequests, listUsers } from "@/lib/models";
 import { resolveReassignmentRequestAction } from "@/app/actions/allocations";
 import Badge from "@/components/Badge";
 import SubmitButton from "@/components/SubmitButton";
@@ -19,19 +19,24 @@ const REQUEST_STATUS_BADGE: Record<string, string> = {
 export default async function AdminRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ resolved?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ resolved?: string; error?: string; q?: string; sort?: string }>;
 }) {
   const query = await searchParams;
   const q = query.q || undefined;
   const sort = query.sort || "requested_desc";
   const pending = await listReassignmentRequests({ status: "PENDING", q, sort });
   const resolved = (await listReassignmentRequests({ q, sort })).filter((r) => r.status !== "PENDING");
+  const users = await listUsers();
 
   return (
     <div>
       <h1 className="text-xl font-semibold text-slate-900 mb-1">Reassignment Requests</h1>
-      <p className="text-sm text-slate-500 mb-6">Review and resolve staff requests to reassign assets.</p>
+      <p className="text-sm text-slate-500 mb-6">
+        Review staff requests to reassign an asset. Approving picks a new owner and moves the
+        asset immediately &mdash; the current holder is automatically checked in first.
+      </p>
 
+      {query.error && <Toast key={query.error} type="error" message={query.error} />}
       {query.resolved && <Toast type="success" message="Request resolved." />}
 
       <form className="bg-white border border-slate-200 rounded-lg p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
@@ -83,7 +88,7 @@ export default async function AdminRequestsPage({
               <th className="text-left px-5 py-2 font-medium">Requested by</th>
               <th className="text-left px-5 py-2 font-medium">Reason</th>
               <th className="text-left px-5 py-2 font-medium">Submitted</th>
-              <th className="text-right px-5 py-2 font-medium">Decision</th>
+              <th className="text-right px-5 py-2 font-medium">Reassign to / Decision</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -98,28 +103,46 @@ export default async function AdminRequestsPage({
                 <td className="px-5 py-2.5 text-slate-600 max-w-xs">{r.reason}</td>
                 <td className="px-5 py-2.5 text-slate-500">{formatDate(r.requested_at)}</td>
                 <td className="px-5 py-2.5">
-                  <div className="flex gap-2 justify-end">
-                    <form action={resolveReassignmentRequestAction}>
-                      <input type="hidden" name="requestId" value={r.id} />
-                      <input type="hidden" name="decision" value="APPROVED" />
+                  {/* One form per row: the select is shared by both buttons, and each submit
+                      button carries its own decision via name/value — Reject ignores newOwnerId,
+                      Approve requires it (validated server-side in resolveReassignmentRequestAction). */}
+                  <form action={resolveReassignmentRequestAction} className="flex flex-col items-end gap-1.5">
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <select
+                      name="newOwnerId"
+                      defaultValue={r.new_owner_id ?? ""}
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs bg-white"
+                    >
+                      <option value={r.new_owner_id ?? ""}>
+                        {r.new_owner_name ? `Suggested: ${r.new_owner_name}` : "Choose new owner…"}
+                      </option>
+                      {users
+                        .filter((u) => u.id !== r.new_owner_id)
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                    </select>
+                    <div className="flex gap-2">
                       <SubmitButton
+                        name="decision"
+                        value="APPROVED"
                         pendingLabel="…"
                         className="text-emerald-700 border border-emerald-200 bg-emerald-50 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-emerald-100"
                       >
                         Approve
                       </SubmitButton>
-                    </form>
-                    <form action={resolveReassignmentRequestAction}>
-                      <input type="hidden" name="requestId" value={r.id} />
-                      <input type="hidden" name="decision" value="REJECTED" />
                       <SubmitButton
+                        name="decision"
+                        value="REJECTED"
                         pendingLabel="…"
                         className="text-red-700 border border-red-200 bg-red-50 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-red-100"
                       >
                         Reject
                       </SubmitButton>
-                    </form>
-                  </div>
+                    </div>
+                  </form>
                 </td>
               </tr>
             ))}
@@ -144,6 +167,7 @@ export default async function AdminRequestsPage({
               <th className="text-left px-5 py-2 font-medium">Asset</th>
               <th className="text-left px-5 py-2 font-medium">Requested by</th>
               <th className="text-left px-5 py-2 font-medium">Status</th>
+              <th className="text-left px-5 py-2 font-medium">Reassigned to</th>
               <th className="text-left px-5 py-2 font-medium">Resolved by</th>
             </tr>
           </thead>
@@ -159,12 +183,15 @@ export default async function AdminRequestsPage({
                 <td className="px-5 py-2.5">
                   <Badge className={REQUEST_STATUS_BADGE[r.status]}>{r.status}</Badge>
                 </td>
+                <td className="px-5 py-2.5 text-slate-600">
+                  {r.status === "APPROVED" ? r.new_owner_name || "-" : "-"}
+                </td>
                 <td className="px-5 py-2.5 text-slate-500">{r.resolved_by_name || "-"}</td>
               </tr>
             ))}
             {resolved.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={5} className="px-5 py-8 text-center text-slate-400">
                   No resolved requests yet.
                 </td>
               </tr>
